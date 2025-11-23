@@ -62,10 +62,10 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess }
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}></div>
-            <div className="relative bg-white/90 backdrop-blur-2xl p-8 rounded-3xl shadow-2xl w-full max-w-sm animate-pop border border-white/50">
+            <div className="relative bg-white/90 backdrop-blur-2xl p-6 md:p-8 rounded-3xl shadow-2xl w-[85%] max-w-[320px] md:max-w-sm animate-pop border border-white/50 max-h-[85vh] overflow-y-auto scrollbar-hide">
                 
                 {/* Tabs */}
-                <div className="flex bg-slate-100 rounded-xl p-1 mb-6">
+                <div className="flex bg-slate-100 rounded-xl p-1 mb-5 md:mb-6">
                     <button 
                         onClick={() => { setIsRegister(false); setError(''); }}
                         className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${!isRegister ? 'bg-white shadow text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}
@@ -80,8 +80,8 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess }
                     </button>
                 </div>
 
-                <div className="text-center mb-6">
-                    <h2 className="text-2xl font-bold text-slate-800 serif">
+                <div className="text-center mb-5 md:mb-6">
+                    <h2 className="text-xl md:text-2xl font-bold text-slate-800 serif">
                         {isRegister ? '加入中医方剂溯源' : '欢迎回来'}
                     </h2>
                     <p className="text-xs text-slate-500 mt-1">
@@ -89,18 +89,18 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess }
                     </p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-3 md:space-y-4">
                     
                     {/* Avatar Selection (Register Only) */}
                     {isRegister && (
                         <div className="mb-4">
                             <label className="block text-xs font-bold text-slate-400 mb-2 text-center">选择您的头像</label>
                             <div className="flex justify-center mb-3">
-                                <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl shadow-inner border-4 border-white ${selectedColor}`}>
+                                <div className={`w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center text-2xl md:text-3xl shadow-inner border-4 border-white ${selectedColor}`}>
                                     {selectedAvatar}
                                 </div>
                             </div>
-                            <div className="flex flex-wrap justify-center gap-2 mb-2">
+                            <div className="flex flex-wrap justify-center gap-1.5 md:gap-2 mb-2">
                                 {AVATAR_EMOJIS.map(emoji => (
                                     <button
                                         key={emoji}
@@ -130,7 +130,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess }
                             type="text" 
                             value={nickname}
                             onChange={e => setNickname(e.target.value)}
-                            className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-indigo-500 outline-none text-center font-medium"
+                            className="w-full p-2.5 md:p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-indigo-500 outline-none text-center font-medium text-sm md:text-base"
                             placeholder="请输入昵称"
                         />
                     </div>
@@ -139,7 +139,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess }
                             type="password" 
                             value={password}
                             onChange={e => setPassword(e.target.value)}
-                            className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-indigo-500 outline-none text-center font-medium"
+                            className="w-full p-2.5 md:p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-indigo-500 outline-none text-center font-medium text-sm md:text-base"
                             placeholder="请输入密码"
                         />
                     </div>
@@ -150,7 +150,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSuccess }
                         </div>
                     )}
 
-                    <button type="submit" className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 text-white py-3 rounded-xl font-bold hover:shadow-lg transition transform active:scale-95">
+                    <button type="submit" className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 text-white py-2.5 md:py-3 rounded-xl font-bold hover:shadow-lg transition transform active:scale-95 text-sm md:text-base">
                         {isRegister ? '立即注册' : '登录'}
                     </button>
                 </form>

@@ -309,36 +309,36 @@ const App: React.FC = () => {
       )}
 
       {/* Header & Auth */}
-      <header className="relative pt-6 pb-6 px-6 z-20 flex flex-col md:flex-row justify-between items-center max-w-6xl mx-auto">
-        <div className="hidden md:block w-32"></div> {/* Spacer */}
+      <header className="relative pt-4 pb-4 px-4 md:pt-6 md:pb-6 md:px-6 z-20 flex flex-row justify-between items-center max-w-6xl mx-auto">
+        <div className="hidden md:block w-32"></div> {/* Spacer for centering logo on desktop */}
         
         {/* Logo Center */}
-        <div className="flex flex-col items-center cursor-pointer group mb-4 md:mb-0" onDoubleClick={() => setIsAdminOpen(true)} title="双击打开管理后台">
+        <div className="flex flex-col items-center cursor-pointer group" onDoubleClick={() => setIsAdminOpen(true)} title="双击打开管理后台">
              <div className="flex items-center">
-                 <div className="bg-white/80 p-2 rounded-2xl shadow-lg shadow-teal-500/10 backdrop-blur-sm mr-3 border border-white/50 group-hover:scale-110 transition-transform duration-300">
-                    <span className="text-3xl filter drop-shadow-sm">🌿</span>
+                 <div className="bg-white/80 p-1.5 md:p-2 rounded-2xl shadow-lg shadow-teal-500/10 backdrop-blur-sm mr-2 md:mr-3 border border-white/50 group-hover:scale-110 transition-transform duration-300">
+                    <span className="text-2xl md:text-3xl filter drop-shadow-sm">🌿</span>
                  </div>
-                 <h1 className="text-3xl md:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-700 via-slate-800 to-slate-600 serif tracking-tight">
-                    方剂<span className="text-teal-600">溯源</span>系统
+                 <h1 className="text-xl md:text-3xl md:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-700 via-slate-800 to-slate-600 serif tracking-tight">
+                    方剂<span className="text-teal-600">溯源</span>
                  </h1>
              </div>
-             <p className="text-slate-500 text-xs mt-1 font-light tracking-wide">
+             <p className="text-slate-500 text-[10px] md:text-xs mt-1 font-light tracking-wide hidden sm:block">
                 智能解析 · 经典名方 · 个人知识库
              </p>
         </div>
 
         {/* Auth / Profile Top Right */}
-        <div className="w-full md:w-32 flex justify-end relative">
+        <div className="w-auto md:w-32 flex justify-end relative pl-2">
             {currentUser ? (
                 <div className="relative">
                     <button 
                         onClick={() => setShowProfileMenu(!showProfileMenu)}
-                        className={`flex items-center space-x-2 bg-white/60 hover:bg-white/90 backdrop-blur-sm pl-1 pr-3 py-1 rounded-full border border-white/60 shadow-sm transition-all ${showProfileMenu ? 'ring-2 ring-indigo-200' : ''}`}
+                        className={`flex items-center space-x-1 md:space-x-2 bg-white/60 hover:bg-white/90 backdrop-blur-sm pl-1 pr-2 md:pr-3 py-1 rounded-full border border-white/60 shadow-sm transition-all ${showProfileMenu ? 'ring-2 ring-indigo-200' : ''}`}
                     >
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-lg ${currentUser.avatarColor}`}>
+                        <div className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center text-base md:text-lg ${currentUser.avatarColor}`}>
                             {currentUser.avatar}
                         </div>
-                        <span className="text-sm font-bold text-slate-700 max-w-[80px] truncate">{currentUser.nickname}</span>
+                        <span className="text-xs md:text-sm font-bold text-slate-700 max-w-[60px] md:max-w-[80px] truncate">{currentUser.nickname}</span>
                     </button>
                     
                     {showProfileMenu && (
@@ -354,7 +354,6 @@ const App: React.FC = () => {
                                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
                                 我的收藏
                             </button>
-                            {/* In a real app, Edit Profile would go here */}
                             <button 
                                 onClick={handleLogout}
                                 className="w-full text-left px-4 py-3 text-sm text-rose-600 hover:bg-rose-50 border-t border-slate-100 flex items-center"
@@ -368,9 +367,9 @@ const App: React.FC = () => {
             ) : (
                 <button 
                     onClick={() => setIsAuthModalOpen(true)}
-                    className="flex items-center space-x-2 bg-white/60 hover:bg-white/90 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/60 shadow-sm text-sm font-bold text-indigo-600 transition-all hover:shadow-md hover:-translate-y-0.5"
+                    className="flex items-center space-x-1 md:space-x-2 bg-white/60 hover:bg-white/90 backdrop-blur-sm px-3 py-1.5 md:px-4 md:py-2 rounded-xl border border-white/60 shadow-sm text-xs md:text-sm font-bold text-indigo-600 transition-all hover:shadow-md hover:-translate-y-0.5 whitespace-nowrap"
                 >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
+                    <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
                     <span>登录 / 注册</span>
                 </button>
             )}
@@ -380,13 +379,13 @@ const App: React.FC = () => {
       <main className="max-w-3xl mx-auto px-4 relative z-10">
         
         {/* Input Section */}
-        <div className="glass-edge relative bg-white/40 backdrop-blur-xl rounded-[2rem] shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] p-2 border border-white/60 mb-10 transition-all hover:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.1)] hover:bg-white/50">
+        <div className="glass-edge relative bg-white/40 backdrop-blur-xl rounded-[2rem] shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] p-1 md:p-2 border border-white/60 mb-10 transition-all hover:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.1)] hover:bg-white/50">
             <div className="relative">
                 <textarea
                     value={input}
                     onChange={handleInputChange}
                     placeholder=""
-                    className="w-full h-40 p-6 rounded-[1.5rem] bg-transparent border-none outline-none text-lg text-slate-700 placeholder:text-slate-400/70 resize-none font-medium leading-relaxed"
+                    className="w-full h-40 p-4 md:p-6 rounded-[1.5rem] bg-transparent border-none outline-none text-base md:text-lg text-slate-700 placeholder:text-slate-400/70 resize-none font-medium leading-relaxed"
                 />
                 
                 {/* Decorative corner lines */}
@@ -396,28 +395,28 @@ const App: React.FC = () => {
                 <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-slate-300/50 rounded-br-lg pointer-events-none"></div>
             </div>
 
-            <div className="flex justify-between items-center px-4 pb-3 pt-1 border-t border-slate-200/30">
-                <div className="text-xs text-slate-400 font-medium pl-2">
+            <div className="flex justify-between items-center px-2 md:px-4 pb-3 pt-1 border-t border-slate-200/30">
+                <div className="text-xs text-slate-400 font-medium pl-2 hidden sm:block">
                     {input.length > 0 ? `${input.length} 字` : '请输入方剂组成...'}
                 </div>
-                <div className="flex space-x-3">
+                <div className="flex space-x-2 md:space-x-3 w-full sm:w-auto justify-end">
                     <button 
                         onClick={() => {setInput(''); setMatches([]); setAiAnalysis(null);}}
-                        className="px-4 py-2 rounded-xl text-slate-500 hover:bg-white/50 transition text-sm font-medium"
+                        className="px-3 py-2 rounded-xl text-slate-500 hover:bg-white/50 transition text-xs md:text-sm font-medium whitespace-nowrap"
                     >
                         清空
                     </button>
                     <button 
                         onClick={handleSearch}
                         disabled={!input.trim() || isSearchingCloud}
-                        className="group relative overflow-hidden bg-gradient-to-r from-indigo-600 to-indigo-500 text-white px-8 py-2.5 rounded-xl font-bold shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/40 hover:scale-105 active:scale-95 transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed"
+                        className="group relative overflow-hidden bg-gradient-to-r from-indigo-600 to-indigo-500 text-white px-4 md:px-8 py-2 md:py-2.5 rounded-xl font-bold shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/40 hover:scale-105 active:scale-95 transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed text-xs md:text-base"
                     >
                         <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-shine"></div>
                         <span className="relative flex items-center">
                             {isSearchingCloud ? (
                                 <>
-                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                    全网检索中...
+                                    <svg className="animate-spin -ml-1 mr-2 h-3 w-3 md:h-4 md:w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    <span>检索中...</span>
                                 </>
                             ) : '智能溯源'}
                         </span>
