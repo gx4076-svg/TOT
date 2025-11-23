@@ -12,7 +12,7 @@ import { HERB_ALIASES, CLASSIC_FORMULAS } from './constants';
 export const parseFormulaInput = (input: string): Herb[] => {
   // 1. Replace common Chinese punctuation/delimiters with standard spaces
   const normalizedInput = input
-    .replace(/[，,、\n\r\t。]/g, ' ') // Added '。' just in case
+    .replace(/[，,、\n\r\t。]/g, ' ') 
     .trim();
   
   // 2. Split by spaces
@@ -60,6 +60,37 @@ export const formatHerbsToLines = (herbs: string[]): string[][] => {
     return lines;
 };
 
+// --- Normalization Helpers ---
+
+/**
+ * Normalizes book names (e.g., "医学衷中参西录" -> "衷中参西").
+ */
+export const normalizeBookName = (rawName: string): string => {
+    if (!rawName) return '未知';
+    let name = rawName.replace(/[《》]/g, '').trim();
+
+    const bookAliases: Record<string, string> = {
+        '医学衷中参西录': '衷中参西',
+        '金匮要略方论': '金匮要略',
+        '备急千金要方': '千金方',
+        '千金要方': '千金方',
+        '太平惠民和剂局方': '局方',
+        '和剂局方': '局方',
+        '伤寒杂病论': '伤寒论',
+        '小儿药证直诀': '小儿药证',
+        '外科正宗': '外科正宗',
+        '景岳全书': '景岳',
+        '丹溪心法': '丹溪',
+        '兰室秘藏': '兰室',
+        '脾胃论': '脾胃论',
+        '医方集解': '医方集解',
+        '温病条辨': '温病',
+        '温热经纬': '温热'
+    };
+
+    return bookAliases[name] || name;
+};
+
 // --- Dosage Helper Functions ---
 
 /**
@@ -94,7 +125,6 @@ export const formatDosageToString = (dosage?: Record<string, number>): string =>
 
 /**
  * Calculates the cosine similarity between two dosage vectors.
- * Used to distinguish formulas with same ingredients but different ratios.
  */
 const calculateRatioSimilarity = (
   inputHerbs: Herb[],
@@ -104,7 +134,7 @@ const calculateRatioSimilarity = (
     .filter(h => standardDosage[h.name])
     .map(h => h.name);
   
-  if (commonKeys.length < 2) return 1; // Can't judge ratio with 0 or 1 common herb
+  if (commonKeys.length < 2) return 1; 
 
   // Create vectors
   const inputVector = commonKeys.map(k => inputHerbs.find(h => h.name === k)!.dosage);
@@ -138,47 +168,35 @@ export const compareFormulaWithInput = (inputHerbs: Herb[], formula: StandardFor
     const missing = formula.composition.filter(name => !inputNames.has(name));
     const additional = inputHerbs.filter(h => !formulaNames.has(h.name));
 
-    // --- SCORING ALGORITHM REVISION ---
-    // Recall: How much of the standard formula did we find? (intersection / standard_len)
+    // --- SCORING ALGORITHM ---
     const recall = intersection.length / formula.composition.length;
-    
-    // Precision: How much of the user's input is relevant to this formula? (intersection / input_len)
     const precision = intersection.length / inputHerbs.length;
 
     // F-Score like balance (Favor Recall slightly for search)
-    // If user types 1 herb "Shu Di", Recall is 0.16 (1/6), Precision is 1.0.
-    // We want this to show up.
-    // Basic Score = (Recall + Precision) / 2
     let finalScore = (recall * 0.6) + (precision * 0.4);
 
     // --- FILTERING LOGIC ---
-    // 1. Must have at least one matching herb.
     if (intersection.length === 0) return null;
 
-    // 2. Remove the hard 0.3 threshold. 
-    // Instead, filter out extremely weak matches only if the input is complex.
-    // If input has > 4 herbs, and we only match 1, it's likely noise.
     if (inputHerbs.length > 4 && intersection.length <= 1 && !formula.isAiGenerated) {
         return null;
     }
-    // If input is small (1-2 herbs), we accept any match (Subject Search Mode).
     
     let matchType: MatchResult['matchType'] = 'variant';
     let dosageNote = undefined;
 
-    // 2. Check for Exact Ingredient Match (Set Equality)
+    // 2. Check for Exact Ingredient Match
     if (missing.length === 0 && additional.length === 0) {
       matchType = 'exact';
-      finalScore = 1.0; // Boost to max
+      finalScore = 1.0; 
       
-      // 3. If ingredients match exactly, check Dosage Ratios
       const hasDosage = inputHerbs.every(h => h.dosage > 0);
       if (hasDosage && formula.standardDosage) {
         const ratioScore = calculateRatioSimilarity(inputHerbs, formula.standardDosage);
         
         if (ratioScore < 0.85) {
           matchType = 'ratio-mismatch';
-          finalScore *= ratioScore; // Penalize score slightly to differentiate from perfect ratio
+          finalScore *= ratioScore; 
           dosageNote = {
             similarity: ratioScore,
             details: '药味完全相同，但剂量比例与原方差异显著，可能为衍生方或类方。'
@@ -191,12 +209,7 @@ export const compareFormulaWithInput = (inputHerbs: Herb[], formula: StandardFor
         }
       }
     } else if (missing.length === 0 && additional.length > 0) {
-      matchType = 'subset'; // Input is a superset of the formula (Formula is a subset of Input)
-      // If user adds 1 herb to a 10 herb formula, score should be high.
-      // Recall = 1. Precision = 10/11. Score high.
-    } else if (missing.length > 0 && additional.length === 0) {
-       // User input is a subset of formula. (e.g. user typed 2 herbs of a 4 herb formula)
-       // Recall = 0.5. Precision = 1.0.
+      matchType = 'subset'; 
     }
 
     return {
@@ -205,15 +218,13 @@ export const compareFormulaWithInput = (inputHerbs: Herb[], formula: StandardFor
       matchType,
       missingHerbs: missing,
       additionalHerbs: additional,
-      inputHerbs: inputHerbs, // Pass through for diff visualization
+      inputHerbs: inputHerbs, 
       dosageAnalysis: dosageNote
     };
 };
 
 /**
  * Main logic to find best matching formulas from database.
- * @param inputHerbs User parsed herbs
- * @param database Optional source of formulas (defaults to static CLASSIC_FORMULAS)
  */
 export const findMatches = (inputHerbs: Herb[], database: StandardFormula[] = CLASSIC_FORMULAS): MatchResult[] => {
   if (inputHerbs.length === 0) return [];
@@ -227,23 +238,17 @@ export const findMatches = (inputHerbs: Herb[], database: StandardFormula[] = CL
     }
   });
 
-  // Sort by score descending
   const sortedMatches = results.sort((a, b) => b.score - a.score);
 
   // --- He Fang (Combined Formula) Detection Logic ---
   if (sortedMatches.length > 0) {
       const topMatch = sortedMatches[0];
       
-      // Only check for combination if there are significant leftovers (at least 2 herbs)
-      // and the top match isn't a perfect explanation itself.
       if (topMatch.additionalHerbs.length >= 2) {
           const leftoverHerbs = topMatch.additionalHerbs;
           
-          // Run a recursive match on the leftovers
-          // We loosen the restriction for the second formula to ensure we catch it
           const secondaryResults: MatchResult[] = [];
           database.forEach(f => {
-              // Don't match the same formula again
               if (f.name === topMatch.formula.name) return;
               const r = compareFormulaWithInput(leftoverHerbs, f);
               if (r) secondaryResults.push(r);
@@ -253,12 +258,6 @@ export const findMatches = (inputHerbs: Herb[], database: StandardFormula[] = CL
 
           if (sortedSecondary.length > 0) {
               const secondMatch = sortedSecondary[0];
-              
-              // Criteria for valid combination:
-              // 1. The second formula must match a significant portion of the leftovers.
-              // 2. The score of the second match should be reasonable (> 0.4 or > 1 match).
-              
-              // Calculate how many of the "leftovers" were explained by the second formula
               const explainedBySecond = secondMatch.formula.composition.filter(
                   c => leftoverHerbs.some(lh => lh.name === c)
               ).length;
@@ -266,7 +265,6 @@ export const findMatches = (inputHerbs: Herb[], database: StandardFormula[] = CL
               if (explainedBySecond >= 2 || (explainedBySecond === leftoverHerbs.length)) {
                   topMatch.isCombined = true;
                   topMatch.combinedWith = secondMatch.formula.name;
-                  // Optionally, we could merge the scores, but identifying the name is sufficient for now.
               }
           }
       }

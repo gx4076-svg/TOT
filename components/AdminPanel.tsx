@@ -1,21 +1,22 @@
 
 import React, { useState, useEffect } from 'react';
-import { StandardFormula } from '../types';
-import { parseDosageString, formatDosageToString } from '../utils';
-import { parseRawFormulaText } from '../services/geminiService';
+import { StandardFormula, HerbDetail, User } from '../types';
+import { parseDosageString, formatDosageToString, normalizeBookName } from '../utils';
+import { parseRawFormulaText, agenticCrawlFormula, agenticCrawlHerb } from '../services/geminiService';
+import { authService } from '../services/authService';
 
 interface AdminPanelProps {
   isOpen: boolean;
   onClose: () => void;
   formulas: StandardFormula[];
-  herbInfo: Record<string, { effect: string; paozhi: string }>;
+  herbInfo: Record<string, HerbDetail>;
   onAddFormula: (formula: StandardFormula) => void;
   onUpdateFormula: (formula: StandardFormula) => void;
-  onAddHerbInfo: (name: string, data: { effect: string; paozhi: string }) => void;
-  onUpdateHerbInfo: (name: string, data: { effect: string; paozhi: string }) => void;
+  onAddHerbInfo: (name: string, data: HerbDetail) => void;
+  onUpdateHerbInfo: (name: string, data: HerbDetail) => void;
 }
 
-type Tab = 'formula' | 'herb' | 'books';
+type Tab = 'formula' | 'herb' | 'crawler' | 'books' | 'users';
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
   isOpen, 
@@ -27,8 +28,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   onAddHerbInfo,
   onUpdateHerbInfo
 }) => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('formula');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // User Management State
+  const [userList, setUserList] = useState<User[]>([]);
 
   // Editing State
   const [editingFormulaId, setEditingFormulaId] = useState<string | null>(null);
@@ -39,43 +45,157 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isParsing, setIsParsing] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
+  // Crawler State
+  const [crawlInput, setCrawlInput] = useState('');
+  const [crawlLog, setCrawlLog] = useState<string[]>([]);
+  const [isCrawling, setIsCrawling] = useState(false);
+  const [crawlType, setCrawlType] = useState<'formula' | 'herb'>('formula');
+
   // Form State for Formula
-  const [formulaForm, setFormulaForm] = useState({
-    name: '',
-    source: '',
-    composition: '',
-    standardDosage: '', // String format: "麻黄:9 桂枝:6"
-    usage: '',
-    effect: '',
-    indications: '',
-    analysis: ''
+  const [formulaForm, setFormulaForm] = useState<Partial<StandardFormula>>({
+    name: '', source: '', composition: [], standardDosage: {}, usage: '', effect: '', indications: '', analysis: '', pinyin: '', category: ''
   });
+  const [standardDosageStr, setStandardDosageStr] = useState('');
+  const [compositionStr, setCompositionStr] = useState('');
 
   // Form State for Herb Info
-  const [herbForm, setHerbForm] = useState({
-    name: '',
-    effect: '',
-    paozhi: ''
+  const [herbForm, setHerbForm] = useState<Partial<HerbDetail> & { name: string }>({
+    name: '', effect: '', paozhi: '', pinyin: '', category: '', origin: '', taste: '', meridians: '', actions: '', usage_dosage: '', contraindications: ''
   });
 
   // Reset forms when tab changes
   useEffect(() => {
+    if (isAuthenticated) {
+        resetForms();
+        if (activeTab === 'users') {
+            refreshUserList();
+        }
+    }
+  }, [activeTab, isAuthenticated]);
+
+  const refreshUserList = () => {
+      setUserList(authService.getAllUsers());
+  };
+
+  const resetForms = () => {
     setEditingFormulaId(null);
     setEditingHerbName(null);
-    setFormulaForm({ name: '', source: '', composition: '', standardDosage: '', usage: '', effect: '', indications: '', analysis: '' });
-    setHerbForm({ name: '', effect: '', paozhi: '' });
+    setFormulaForm({ name: '', source: '', composition: [], standardDosage: {}, usage: '', effect: '', indications: '', analysis: '', pinyin: '', category: '' });
+    setStandardDosageStr('');
+    setCompositionStr('');
+    setHerbForm({ name: '', effect: '', paozhi: '', pinyin: '', category: '', origin: '', taste: '', meridians: '', actions: '', usage_dosage: '', contraindications: '' });
     setShowImport(false);
     setRawImportText('');
-  }, [activeTab]);
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (password === '107868') {
+          setIsAuthenticated(true);
+      } else {
+          alert('密码错误');
+      }
+  };
+
+  const handleDeleteUser = (userId: string) => {
+      if (window.confirm('确定要删除该用户吗？所有收藏数据将丢失。')) {
+          authService.deleteUser(userId);
+          refreshUserList();
+      }
+  };
 
   if (!isOpen) return null;
+
+  // --- Login Screen ---
+  if (!isAuthenticated) {
+      return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}></div>
+              <div className="relative bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm animate-pop">
+                  <div className="text-center mb-6">
+                      <div className="text-4xl mb-2">🔒</div>
+                      <h2 className="text-xl font-bold text-slate-800">管理员登录</h2>
+                      <p className="text-sm text-slate-500">请输入访问密码以进入后台</p>
+                  </div>
+                  <form onSubmit={handleLogin}>
+                      <input 
+                          type="password" 
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          className="w-full p-3 rounded-xl border border-slate-300 mb-4 focus:ring-2 ring-indigo-500 outline-none text-center tracking-widest text-lg"
+                          placeholder="••••••"
+                          autoFocus
+                      />
+                      <button type="submit" className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition">
+                          验证
+                      </button>
+                      <button type="button" onClick={onClose} className="w-full mt-3 text-slate-400 text-sm hover:text-slate-600">
+                          返回
+                      </button>
+                  </form>
+              </div>
+          </div>
+      );
+  }
 
   // Helpers
   const uniqueBooks = Array.from(new Set(formulas.map(f => f.source))).sort();
   const filteredFormulas = formulas.filter(f => f.name.includes(searchTerm) || f.composition.includes(searchTerm));
-  const filteredHerbs = (Object.entries(herbInfo) as [string, { effect: string; paozhi: string }][]).filter(([name, data]) => 
+  const filteredHerbs = (Object.entries(herbInfo) as [string, HerbDetail][]).filter(([name, data]) => 
     name.includes(searchTerm) || data.effect.includes(searchTerm)
   );
+
+  // --- Crawler Handlers ---
+  const handleStartCrawl = async () => {
+      const items = crawlInput.split(/[\n,，]/).map(s => s.trim()).filter(Boolean);
+      if (items.length === 0) return;
+
+      setIsCrawling(true);
+      setCrawlLog(prev => [...prev, `🚀 开始连接 zysj.com.cn 爬取 ${items.length} 个${crawlType === 'formula' ? '方剂' : '中药'}...`]);
+
+      for (const item of items) {
+          setCrawlLog(prev => [...prev, `🔍 正在检索: ${item}`]);
+          
+          if (crawlType === 'formula') {
+             const existing = formulas.find(f => f.name === item);
+             if (existing) {
+                 setCrawlLog(prev => [...prev, `⚠️ 已存在，跳过: ${item}`]);
+                 continue;
+             }
+             
+             const data = await agenticCrawlFormula(item);
+             if (data) {
+                 // Double normalize locally just in case
+                 if (data.source) data.source = normalizeBookName(data.source);
+                 
+                 onAddFormula(data);
+                 setCrawlLog(prev => [...prev, `✅ [中医世家] 成功抓取并入库: ${item}`]);
+             } else {
+                 setCrawlLog(prev => [...prev, `❌ 抓取失败: ${item}`]);
+             }
+          } else {
+             // Herb Crawl
+             if (herbInfo[item]) {
+                  setCrawlLog(prev => [...prev, `⚠️ 已存在，跳过: ${item}`]);
+                  continue;
+             }
+             const data = await agenticCrawlHerb(item);
+             if (data) {
+                 onAddHerbInfo(item, data);
+                 setCrawlLog(prev => [...prev, `✅ [中医世家] 成功抓取并入库: ${item}`]);
+             } else {
+                 setCrawlLog(prev => [...prev, `❌ 抓取失败: ${item}`]);
+             }
+          }
+          
+          // Random delay to simulate courteous crawler
+          await new Promise(r => setTimeout(r, 1000));
+      }
+
+      setIsCrawling(false);
+      setCrawlLog(prev => [...prev, `🎉 所有任务完成！数据已同步至本地数据库。`]);
+  };
+
 
   // --- Formula Handlers ---
 
@@ -86,21 +206,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           const result = await parseRawFormulaText(rawImportText);
           if (result) {
               setFormulaForm({
-                  name: result.name || '',
-                  source: result.source || '',
-                  composition: Array.isArray(result.composition) ? result.composition.join(' ') : (result.composition || ''),
-                  standardDosage: result.standardDosage || '',
-                  usage: result.usage || '',
-                  effect: result.effect || '',
-                  indications: result.indications || '',
-                  analysis: result.analysis || ''
+                  ...result,
+                  source: normalizeBookName(result.source),
+                  composition: result.composition || [],
+                  standardDosage: {}
               });
-              setShowImport(false); // Close import text area
-              setRawImportText(''); // Clear input
-              // Alert logic handled by UI change
+              setCompositionStr(Array.isArray(result.composition) ? result.composition.join(' ') : (result.composition || ''));
+              setStandardDosageStr(result.standardDosage || '');
+              setShowImport(false); 
+              setRawImportText(''); 
           }
       } catch (e) {
-          alert('识别失败，请重试或手动输入。错误信息已记录控制台。');
+          alert('识别失败，请重试或手动输入。');
       } finally {
           setIsParsing(false);
       }
@@ -108,16 +225,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleEditFormula = (formula: StandardFormula) => {
     setEditingFormulaId(formula.id);
-    setFormulaForm({
-      name: formula.name,
-      source: formula.source,
-      composition: formula.composition.join(' '),
-      standardDosage: formatDosageToString(formula.standardDosage),
-      usage: formula.usage,
-      effect: formula.effect,
-      indications: formula.indications,
-      analysis: formula.analysis
-    });
+    setFormulaForm(formula);
+    setCompositionStr(formula.composition.join(' '));
+    setStandardDosageStr(formatDosageToString(formula.standardDosage));
     // Scroll to top of form
     document.getElementById('formula-form-top')?.scrollIntoView({ behavior: 'smooth' });
     setShowImport(false);
@@ -125,22 +235,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleSaveFormula = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formulaForm.name || !formulaForm.composition) return;
+    if (!formulaForm.name || !compositionStr) return;
     
-    const standardDosageObj = formulaForm.standardDosage 
-        ? parseDosageString(formulaForm.standardDosage) 
-        : undefined;
+    const standardDosageObj = parseDosageString(standardDosageStr);
+    const compositionArr = compositionStr.replace(/[，、]/g, ' ').split(/\s+/).filter(Boolean);
 
     const formulaObj: StandardFormula = {
       id: editingFormulaId || `custom-${Date.now()}`,
-      name: formulaForm.name,
-      source: formulaForm.source || '自定义',
-      composition: formulaForm.composition.replace(/[，、]/g, ' ').split(/\s+/).filter(Boolean),
+      name: formulaForm.name || '',
+      source: normalizeBookName(formulaForm.source || '自定义'),
+      composition: compositionArr,
       standardDosage: standardDosageObj,
-      usage: formulaForm.usage,
-      effect: formulaForm.effect,
-      indications: formulaForm.indications,
-      analysis: formulaForm.analysis
+      usage: formulaForm.usage || '',
+      effect: formulaForm.effect || '',
+      indications: formulaForm.indications || '',
+      analysis: formulaForm.analysis || '',
+      pinyin: formulaForm.pinyin,
+      category: formulaForm.category
     };
 
     if (editingFormulaId) {
@@ -151,25 +262,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         alert('方剂已添加');
     }
     
-    // Reset
-    setEditingFormulaId(null);
-    setFormulaForm({ name: '', source: '', composition: '', standardDosage: '', usage: '', effect: '', indications: '', analysis: '' });
-  };
-
-  const handleCancelFormulaEdit = () => {
-    setEditingFormulaId(null);
-    setFormulaForm({ name: '', source: '', composition: '', standardDosage: '', usage: '', effect: '', indications: '', analysis: '' });
+    resetForms();
   };
 
   // --- Herb Handlers ---
 
-  const handleEditHerb = (name: string, data: { effect: string; paozhi: string }) => {
+  const handleEditHerb = (name: string, data: HerbDetail) => {
       setEditingHerbName(name);
-      setHerbForm({
-          name: name,
-          effect: data.effect,
-          paozhi: data.paozhi
-      });
+      setHerbForm({ ...data, name });
       document.getElementById('herb-form-top')?.scrollIntoView({ behavior: 'smooth' });
   };
 
@@ -177,21 +277,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     e.preventDefault();
     if (!herbForm.name) return;
     
+    const { name, ...data } = herbForm;
+    // ensure required fields have strings
+    const safeData: HerbDetail = {
+        effect: data.effect || '',
+        paozhi: data.paozhi || '',
+        ...data
+    };
+
     if (editingHerbName) {
-        onUpdateHerbInfo(herbForm.name, { effect: herbForm.effect, paozhi: herbForm.paozhi });
+        onUpdateHerbInfo(name, safeData);
         alert('药效信息已更新');
     } else {
-        onAddHerbInfo(herbForm.name, { effect: herbForm.effect, paozhi: herbForm.paozhi });
+        onAddHerbInfo(name, safeData);
         alert('药效信息已添加');
     }
     
-    setEditingHerbName(null);
-    setHerbForm({ name: '', effect: '', paozhi: '' });
-  };
-
-  const handleCancelHerbEdit = () => {
-    setEditingHerbName(null);
-    setHerbForm({ name: '', effect: '', paozhi: '' });
+    resetForms();
   };
 
   return (
@@ -236,10 +338,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  <span className="mr-2">🌿</span> <span className="md:inline">本草炮制</span>
               </button>
               <button 
+                onClick={() => setActiveTab('crawler')}
+                className={`flex-shrink-0 px-4 py-2 md:py-3 rounded-xl text-sm font-medium transition-all whitespace-nowrap flex items-center justify-center md:justify-start ${activeTab === 'crawler' ? 'bg-white shadow-md text-rose-600 ring-1 ring-rose-100' : 'text-slate-500 hover:bg-white/60'}`}
+              >
+                 <span className="mr-2">🕷️</span> <span className="md:inline">AI 爬虫</span>
+              </button>
+              <button 
                 onClick={() => setActiveTab('books')}
                 className={`flex-shrink-0 px-4 py-2 md:py-3 rounded-xl text-sm font-medium transition-all whitespace-nowrap flex items-center justify-center md:justify-start ${activeTab === 'books' ? 'bg-white shadow-md text-amber-600 ring-1 ring-amber-100' : 'text-slate-500 hover:bg-white/60'}`}
               >
                  <span className="mr-2">📚</span> <span className="md:inline">典籍统计</span>
+              </button>
+              <button 
+                onClick={() => setActiveTab('users')}
+                className={`flex-shrink-0 px-4 py-2 md:py-3 rounded-xl text-sm font-medium transition-all whitespace-nowrap flex items-center justify-center md:justify-start ${activeTab === 'users' ? 'bg-white shadow-md text-blue-600 ring-1 ring-blue-100' : 'text-slate-500 hover:bg-white/60'}`}
+              >
+                 <span className="mr-2">👥</span> <span className="md:inline">用户管理</span>
               </button>
            </div>
 
@@ -297,7 +411,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                   {editingFormulaId ? '编辑方剂' : '添加新方剂 (或通过上方智能导入)'}
                               </span>
                               {editingFormulaId && (
-                                  <button onClick={handleCancelFormulaEdit} className="text-xs text-slate-500 hover:text-slate-700 underline">
+                                  <button onClick={resetForms} className="text-xs text-slate-500 hover:text-slate-700 underline">
                                       取消编辑
                                   </button>
                               )}
@@ -311,13 +425,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">出处</label>
                                 <input value={formulaForm.source} onChange={e => setFormulaForm({...formulaForm, source: e.target.value})} placeholder="出处 (如: 《伤寒论》)" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-indigo-200 outline-none transition-all" />
                               </div>
+                              {/* New Fields */}
+                               <div className="md:col-span-1 min-w-0">
+                                <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">类别 (可选)</label>
+                                <input value={formulaForm.category} onChange={e => setFormulaForm({...formulaForm, category: e.target.value})} placeholder="如: 解表剂" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-indigo-200 outline-none transition-all" />
+                              </div>
+                              <div className="md:col-span-1 min-w-0">
+                                <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">拼音 (可选)</label>
+                                <input value={formulaForm.pinyin} onChange={e => setFormulaForm({...formulaForm, pinyin: e.target.value})} placeholder="如: Ma Huang Tang" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-indigo-200 outline-none transition-all" />
+                              </div>
+
                               <div className="md:col-span-2 min-w-0">
                                 <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">组成药物</label>
-                                <input value={formulaForm.composition} onChange={e => setFormulaForm({...formulaForm, composition: e.target.value})} placeholder="组成 (用空格分隔, 如: 麻黄 桂枝)" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-indigo-200 outline-none transition-all" required />
+                                <input value={compositionStr} onChange={e => setCompositionStr(e.target.value)} placeholder="组成 (用空格分隔, 如: 麻黄 桂枝)" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-indigo-200 outline-none transition-all" required />
                               </div>
                               <div className="md:col-span-2 min-w-0">
                                 <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">标准剂量参考</label>
-                                <input value={formulaForm.standardDosage} onChange={e => setFormulaForm({...formulaForm, standardDosage: e.target.value})} placeholder="标准剂量 (选填, 格式: 麻黄:9 桂枝:6)" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-indigo-200 outline-none transition-all font-mono text-sm" />
+                                <input value={standardDosageStr} onChange={e => setStandardDosageStr(e.target.value)} placeholder="标准剂量 (选填, 格式: 麻黄:9 桂枝:6)" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-indigo-200 outline-none transition-all font-mono text-sm" />
                               </div>
                               <div className="md:col-span-1 min-w-0">
                                 <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">用法</label>
@@ -391,16 +515,46 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                   {editingHerbName ? '编辑药物信息' : '添加药物/炮制信息'}
                               </span>
                               {editingHerbName && (
-                                  <button onClick={handleCancelHerbEdit} className="text-xs text-slate-500 hover:text-slate-700 underline">
+                                  <button onClick={resetForms} className="text-xs text-slate-500 hover:text-slate-700 underline">
                                       取消编辑
                                   </button>
                               )}
                           </h3>
-                          <form onSubmit={handleSaveHerb} className="grid grid-cols-1 gap-4">
-                              <input value={herbForm.name} onChange={e => setHerbForm({...herbForm, name: e.target.value})} placeholder="药物名称 (如: 人参)" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-emerald-200 outline-none transition-all" required disabled={!!editingHerbName} title={editingHerbName ? "编辑模式下无法修改名称" : ""} />
-                              <input value={herbForm.effect} onChange={e => setHerbForm({...herbForm, effect: e.target.value})} placeholder="功效 (如: 大补元气...)" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-emerald-200 outline-none transition-all" />
-                              <textarea value={herbForm.paozhi} onChange={e => setHerbForm({...herbForm, paozhi: e.target.value})} placeholder="炮制方法 (如: 【蜜炙】...)" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-emerald-200 outline-none h-24 transition-all resize-none" />
-                              <button type="submit" className={`py-3 rounded-xl font-bold shadow-lg transition w-full text-white ${editingHerbName ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                          <form onSubmit={handleSaveHerb} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="md:col-span-1">
+                                <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">药物名称</label>
+                                <input value={herbForm.name} onChange={e => setHerbForm({...herbForm, name: e.target.value})} placeholder="如: 人参" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-emerald-200 outline-none transition-all" required disabled={!!editingHerbName} />
+                              </div>
+                               <div className="md:col-span-1">
+                                <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">拼音</label>
+                                <input value={herbForm.pinyin} onChange={e => setHerbForm({...herbForm, pinyin: e.target.value})} placeholder="如: Ren Shen" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-emerald-200 outline-none transition-all" />
+                              </div>
+                              
+                              <div className="md:col-span-1">
+                                <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">性味</label>
+                                <input value={herbForm.taste} onChange={e => setHerbForm({...herbForm, taste: e.target.value})} placeholder="如: 甘、微苦，微温" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-emerald-200 outline-none transition-all" />
+                              </div>
+                              <div className="md:col-span-1">
+                                <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">归经</label>
+                                <input value={herbForm.meridians} onChange={e => setHerbForm({...herbForm, meridians: e.target.value})} placeholder="如: 脾、肺、心、肾经" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-emerald-200 outline-none transition-all" />
+                              </div>
+
+                              <div className="md:col-span-2">
+                                <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">功效 (必填)</label>
+                                <input value={herbForm.effect} onChange={e => setHerbForm({...herbForm, effect: e.target.value})} placeholder="功效 (如: 大补元气...)" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-emerald-200 outline-none transition-all" required/>
+                              </div>
+                              
+                              <div className="md:col-span-2">
+                                <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">炮制方法 (必填)</label>
+                                <textarea value={herbForm.paozhi} onChange={e => setHerbForm({...herbForm, paozhi: e.target.value})} placeholder="炮制方法 (如: 【蜜炙】...)" className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-emerald-200 outline-none h-20 transition-all resize-none" required/>
+                              </div>
+                              
+                               <div className="md:col-span-2">
+                                <label className="block text-xs font-bold text-slate-500 mb-1 ml-1">主治</label>
+                                <textarea value={herbForm.actions} onChange={e => setHerbForm({...herbForm, actions: e.target.value})} placeholder="主治病证..." className="w-full p-3 rounded-xl border border-slate-200 bg-white/50 focus:ring-2 ring-emerald-200 outline-none h-16 transition-all resize-none" />
+                              </div>
+
+                              <button type="submit" className={`md:col-span-2 py-3 rounded-xl font-bold shadow-lg transition w-full text-white ${editingHerbName ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
                                   {editingHerbName ? '更新药物信息' : '保存药物信息'}
                               </button>
                           </form>
@@ -430,11 +584,137 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             编辑
                                           </button>
                                       </div>
-                                      <div className="text-xs text-slate-600 mb-2"><span className="font-bold text-slate-400">功效：</span>{data.effect}</div>
-                                      <div className="text-xs text-slate-500 bg-slate-50/50 p-2 rounded mt-auto"><span className="font-bold text-slate-400">炮制：</span>{data.paozhi}</div>
+                                      <div className="text-xs text-slate-600 mb-2 line-clamp-2"><span className="font-bold text-slate-400">功效：</span>{data.effect}</div>
+                                      {data.meridians && <div className="text-xs text-slate-500 mb-1"><span className="font-bold text-slate-400">归经：</span>{data.meridians}</div>}
+                                      <div className="text-xs text-slate-500 bg-slate-50/50 p-2 rounded mt-auto line-clamp-2"><span className="font-bold text-slate-400">炮制：</span>{data.paozhi}</div>
                                   </div>
                               ))}
                           </div>
+                      </div>
+                  </div>
+              )}
+
+              {/* === CRAWLER TAB === */}
+              {activeTab === 'crawler' && (
+                  <div className="space-y-6 pb-10">
+                      <div className="bg-gradient-to-br from-rose-50 to-orange-50 p-6 rounded-2xl border border-rose-100 shadow-sm">
+                          <h3 className="text-xl font-bold text-rose-800 mb-2 flex items-center">
+                              🕷️ 中医世家 AI 爬虫 (ZYSJ Crawler)
+                          </h3>
+                          <p className="text-sm text-rose-600/80 mb-4 leading-relaxed">
+                              本功能模拟 Python 爬虫逻辑，利用 AI 的 Agent 能力直接检索 <strong>zysj.com.cn (中医世家)</strong> 等权威数据源。
+                              <br/>支持自动标准化药名（如：薏米→薏苡仁）、书名（如：医学衷中参西录→衷中参西），并将数据自动清洗入库。
+                          </p>
+
+                          <div className="flex space-x-4 mb-4">
+                              <label className="flex items-center cursor-pointer">
+                                  <input type="radio" name="crawlType" checked={crawlType === 'formula'} onChange={() => setCrawlType('formula')} className="mr-2 accent-rose-600" />
+                                  <span className="text-sm font-bold text-slate-700">抓取方剂</span>
+                              </label>
+                              <label className="flex items-center cursor-pointer">
+                                  <input type="radio" name="crawlType" checked={crawlType === 'herb'} onChange={() => setCrawlType('herb')} className="mr-2 accent-rose-600" />
+                                  <span className="text-sm font-bold text-slate-700">抓取中药</span>
+                              </label>
+                          </div>
+
+                          <textarea 
+                              value={crawlInput}
+                              onChange={e => setCrawlInput(e.target.value)}
+                              placeholder={`请输入要从 zysj.com.cn 抓取的${crawlType === 'formula' ? '方剂' : '中药'}名称，每行一个。\n例如：\n桂枝汤\n麻黄汤\n小青龙汤`}
+                              className="w-full h-40 p-4 rounded-xl border border-rose-200 bg-white/60 focus:ring-2 ring-rose-200 outline-none resize-none font-mono text-sm mb-4"
+                          />
+
+                          <button 
+                            onClick={handleStartCrawl}
+                            disabled={isCrawling || !crawlInput.trim()}
+                            className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                          >
+                             {isCrawling ? (
+                                <>
+                                    <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    AI 正在定向检索 ZYSJ 数据...
+                                </>
+                             ) : '开始智能爬取并入库'}
+                          </button>
+                      </div>
+
+                      {/* Crawler Logs */}
+                      <div className="bg-slate-900 rounded-2xl p-4 font-mono text-xs h-64 overflow-y-auto custom-scrollbar border border-slate-700 shadow-inner">
+                          <div className="text-slate-400 mb-2 border-b border-slate-700 pb-1 flex justify-between">
+                              <span>系统日志终端</span>
+                              <span>STATUS: {isCrawling ? 'ACTIVE' : 'IDLE'}</span>
+                          </div>
+                          {crawlLog.length === 0 ? (
+                              <div className="text-slate-600 italic opacity-50 pt-2">等待任务指令...</div>
+                          ) : (
+                              crawlLog.map((log, i) => (
+                                  <div key={i} className="mb-1 text-emerald-400 border-l-2 border-emerald-900 pl-2">
+                                      <span className="text-slate-600 mr-2">[{new Date().toLocaleTimeString()}]</span>
+                                      {log}
+                                  </div>
+                              ))
+                          )}
+                          {isCrawling && <div className="animate-pulse text-rose-400 mt-2">_ 正在解析页面结构...</div>}
+                      </div>
+                  </div>
+              )}
+
+              {/* === USERS TAB === */}
+              {activeTab === 'users' && (
+                  <div>
+                      <h3 className="text-2xl font-bold text-slate-800 mb-6 font-serif">用户管理</h3>
+                      <div className="bg-white/60 rounded-2xl border border-white/60 shadow-sm overflow-hidden">
+                        <table className="w-full text-left text-sm text-slate-600">
+                            <thead className="bg-slate-100/50 text-slate-500 uppercase text-xs font-bold">
+                                <tr>
+                                    <th className="px-6 py-4">用户</th>
+                                    <th className="px-6 py-4">注册时间</th>
+                                    <th className="px-6 py-4">最后登录</th>
+                                    <th className="px-6 py-4">收藏数量</th>
+                                    <th className="px-6 py-4 text-right">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {userList.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-10 text-center text-slate-400">
+                                            暂无注册用户
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    userList.map(user => (
+                                        <tr key={user.id} className="hover:bg-white/50 transition">
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center space-x-3">
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${user.avatarColor}`}>
+                                                        {user.avatar}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-bold text-slate-800">{user.nickname}</div>
+                                                        <div className="text-[10px] text-slate-400">ID: {user.id.slice(-6)}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">{user.createdAt}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap">{user.lastLogin}</td>
+                                            <td className="px-6 py-4">
+                                                <span className="bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-xs font-bold">
+                                                    {user.savedItems?.length || 0}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <button 
+                                                    onClick={() => handleDeleteUser(user.id)}
+                                                    className="text-rose-500 hover:text-rose-700 font-medium text-xs bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100"
+                                                >
+                                                    删除用户
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
                       </div>
                   </div>
               )}

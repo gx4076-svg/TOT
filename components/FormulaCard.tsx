@@ -49,7 +49,7 @@ const VisualComparison: React.FC<{ result: MatchResult }> = ({ result }) => {
                                     <span 
                                         className={`cursor-help px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-300 inline-flex items-center shadow-sm border ${
                                             isMatch 
-                                            ? 'bg-gradient-to-b from-emerald-50/80 to-emerald-100/40 text-emerald-700 border-emerald-200/60 hover:shadow-md hover:scale-105' 
+                                            ? 'bg-gradient-to-b from-emerald-50/80 to-emerald-100/40 text-emerald-700 border-emerald-200/60' 
                                             : 'bg-slate-50/50 text-slate-400 border-transparent decoration-rose-300 line-through opacity-70 grayscale-[20%]'
                                         }`}
                                     >
@@ -79,7 +79,7 @@ const VisualComparison: React.FC<{ result: MatchResult }> = ({ result }) => {
                                     <span 
                                         className={`cursor-help px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-300 inline-flex items-center border ${
                                             isMatch 
-                                            ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20 hover:scale-105' 
+                                            ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20' 
                                             : 'bg-white/40 text-indigo-600 border-indigo-200/60 border-indigo-200/60 border-dashed hover:bg-white/80 hover:border-indigo-300 hover:shadow-sm'
                                         }`}
                                     >

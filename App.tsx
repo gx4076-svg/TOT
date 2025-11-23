@@ -1,24 +1,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { parseFormulaInput, findMatches, compareFormulaWithInput, formatHerbsToLines } from './utils';
-import { Herb, MatchResult, StandardFormula } from './types';
+import { Herb, MatchResult, StandardFormula, HerbDetail, SavedItem, User } from './types';
 import { HERB_INFO, CLASSIC_FORMULAS } from './constants';
 import { generateTCMAnalysis, identifyFormula } from './services/geminiService';
+import { authService } from './services/authService';
 import FormulaCard from './components/FormulaCard';
 import CosmicLoader from './components/CosmicLoader';
 import AdminPanel from './components/AdminPanel';
+import AuthModal from './components/AuthModal';
 import ReactMarkdown from 'react-markdown';
-
-// Simple type for saved items
-interface SavedItem {
-    id: string;
-    name: string;
-    herbs: string[];
-    type: 'user' | 'standard';
-    date: string;
-    note?: string; // User remarks
-    colorTheme?: string; // Card background style class id
-}
 
 // Predefined color themes for cards
 const CARD_THEMES = [
@@ -40,7 +31,12 @@ const App: React.FC = () => {
   const [analyzingFormulaName, setAnalyzingFormulaName] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   
-  // Favorites State
+  // Auth State
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  // Favorites State (Synced with User if logged in)
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   
@@ -50,11 +46,67 @@ const App: React.FC = () => {
       name: '', note: '', colorTheme: 'default'
   });
 
-  // --- Admin / Dynamic Data State ---
+  // --- Admin / Dynamic Data State with Persistence ---
   const [isAdminOpen, setIsAdminOpen] = useState(false);
-  // Initialize with static data, but allow adding new ones via Admin Panel
-  const [dynamicFormulas, setDynamicFormulas] = useState<StandardFormula[]>(CLASSIC_FORMULAS);
-  const [dynamicHerbInfo, setDynamicHerbInfo] = useState<Record<string, { effect: string; paozhi: string }>>(HERB_INFO);
+  
+  // Load from LocalStorage or use Constants
+  const [dynamicFormulas, setDynamicFormulas] = useState<StandardFormula[]>(() => {
+      try {
+          const saved = localStorage.getItem('tcm_formulas');
+          return saved ? JSON.parse(saved) : CLASSIC_FORMULAS;
+      } catch (e) {
+          return CLASSIC_FORMULAS;
+      }
+  });
+
+  const [dynamicHerbInfo, setDynamicHerbInfo] = useState<Record<string, HerbDetail>>(() => {
+      try {
+          const saved = localStorage.getItem('tcm_herb_info');
+          if (saved) return JSON.parse(saved);
+          return HERB_INFO as unknown as Record<string, HerbDetail>;
+      } catch (e) {
+          return HERB_INFO as unknown as Record<string, HerbDetail>;
+      }
+  });
+
+  // --- Initial Load ---
+  useEffect(() => {
+      // 1. Load User
+      const user = authService.getCurrentUser();
+      if (user) {
+          setCurrentUser(user);
+          setSavedItems(user.savedItems || []);
+      } else {
+          // Load local guest items if no user
+          try {
+              const localSaved = localStorage.getItem('tcm_saved_items_guest');
+              if (localSaved) setSavedItems(JSON.parse(localSaved));
+          } catch (e) {}
+      }
+  }, []);
+
+  // Save to LocalStorage whenever data changes
+  useEffect(() => {
+      localStorage.setItem('tcm_formulas', JSON.stringify(dynamicFormulas));
+  }, [dynamicFormulas]);
+
+  useEffect(() => {
+      localStorage.setItem('tcm_herb_info', JSON.stringify(dynamicHerbInfo));
+  }, [dynamicHerbInfo]);
+
+  // Sync saved items to persistence
+  useEffect(() => {
+      if (currentUser) {
+          // If logged in, update user object
+          const updatedUser = { ...currentUser, savedItems };
+          authService.updateUserData(updatedUser);
+          // We don't set CurrentUser state here to avoid infinite loop, 
+          // but we rely on internal savedItems state for UI
+      } else {
+          // Guest mode
+          localStorage.setItem('tcm_saved_items_guest', JSON.stringify(savedItems));
+      }
+  }, [savedItems, currentUser?.id]); // Only trigger when items change or user ID changes
 
   // --- UI State for Low Confidence Results ---
   const [showLowConfidence, setShowLowConfidence] = useState(false);
@@ -199,24 +251,37 @@ const App: React.FC = () => {
 
   // --- Admin Logic ---
   const handleAddFormula = (newFormula: StandardFormula) => {
-      setDynamicFormulas(prev => [...prev, newFormula]);
+      setDynamicFormulas(prev => [newFormula, ...prev]);
   };
   
   const handleUpdateFormula = (updatedFormula: StandardFormula) => {
       setDynamicFormulas(prev => prev.map(f => f.id === updatedFormula.id ? updatedFormula : f));
   };
 
-  const handleAddHerbInfo = (name: string, data: { effect: string; paozhi: string }) => {
+  const handleAddHerbInfo = (name: string, data: HerbDetail) => {
       setDynamicHerbInfo(prev => ({ ...prev, [name]: data }));
   };
 
-  const handleUpdateHerbInfo = (name: string, data: { effect: string; paozhi: string }) => {
+  const handleUpdateHerbInfo = (name: string, data: HerbDetail) => {
       setDynamicHerbInfo(prev => ({ ...prev, [name]: data }));
   };
 
   const isSaved = (name: string, herbs: Herb[]) => {
       const herbNames = herbs.map(h => h.name);
       return savedItems.some(item => item.name === name && JSON.stringify(item.herbs) === JSON.stringify(herbNames));
+  };
+
+  // --- Auth Handlers ---
+  const handleLoginSuccess = (user: User) => {
+      setCurrentUser(user);
+      setSavedItems(user.savedItems || []);
+  };
+
+  const handleLogout = () => {
+      authService.logout();
+      setCurrentUser(null);
+      setShowProfileMenu(false);
+      setSavedItems([]); // Or reset to guest items
   };
 
   // --- Visuals ---
@@ -243,19 +308,73 @@ const App: React.FC = () => {
           </div>
       )}
 
-      {/* Header */}
-      <header className="relative pt-10 pb-6 px-6 text-center z-10">
-        <div className="flex justify-center items-center mb-4 cursor-pointer group" onDoubleClick={() => setIsAdminOpen(true)} title="双击打开管理后台">
-             <div className="bg-white/80 p-3 rounded-2xl shadow-lg shadow-teal-500/10 backdrop-blur-sm mr-4 border border-white/50 group-hover:scale-110 transition-transform duration-300">
-                <span className="text-4xl filter drop-shadow-sm">🌿</span>
+      {/* Header & Auth */}
+      <header className="relative pt-6 pb-6 px-6 z-20 flex flex-col md:flex-row justify-between items-center max-w-6xl mx-auto">
+        <div className="hidden md:block w-32"></div> {/* Spacer */}
+        
+        {/* Logo Center */}
+        <div className="flex flex-col items-center cursor-pointer group mb-4 md:mb-0" onDoubleClick={() => setIsAdminOpen(true)} title="双击打开管理后台">
+             <div className="flex items-center">
+                 <div className="bg-white/80 p-2 rounded-2xl shadow-lg shadow-teal-500/10 backdrop-blur-sm mr-3 border border-white/50 group-hover:scale-110 transition-transform duration-300">
+                    <span className="text-3xl filter drop-shadow-sm">🌿</span>
+                 </div>
+                 <h1 className="text-3xl md:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-700 via-slate-800 to-slate-600 serif tracking-tight">
+                    方剂<span className="text-teal-600">溯源</span>系统
+                 </h1>
              </div>
-             <h1 className="text-4xl md:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-700 via-slate-800 to-slate-600 serif tracking-tight">
-                方剂<span className="text-teal-600">溯源</span>系统
-             </h1>
+             <p className="text-slate-500 text-xs mt-1 font-light tracking-wide">
+                智能解析 · 经典名方 · 个人知识库
+             </p>
         </div>
-        <p className="text-slate-500 text-sm md:text-base max-w-lg mx-auto font-light tracking-wide">
-          智能解析药物组成 · AI 辅助深度分析 · 经典名方匹配
-        </p>
+
+        {/* Auth / Profile Top Right */}
+        <div className="w-full md:w-32 flex justify-end relative">
+            {currentUser ? (
+                <div className="relative">
+                    <button 
+                        onClick={() => setShowProfileMenu(!showProfileMenu)}
+                        className={`flex items-center space-x-2 bg-white/60 hover:bg-white/90 backdrop-blur-sm pl-1 pr-3 py-1 rounded-full border border-white/60 shadow-sm transition-all ${showProfileMenu ? 'ring-2 ring-indigo-200' : ''}`}
+                    >
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-lg ${currentUser.avatarColor}`}>
+                            {currentUser.avatar}
+                        </div>
+                        <span className="text-sm font-bold text-slate-700 max-w-[80px] truncate">{currentUser.nickname}</span>
+                    </button>
+                    
+                    {showProfileMenu && (
+                        <div className="absolute top-full right-0 mt-2 w-48 bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-white/50 overflow-hidden animate-pop z-50">
+                            <div className="p-3 border-b border-slate-100">
+                                <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">已登录账号</p>
+                                <p className="font-bold text-slate-800 truncate">{currentUser.nickname}</p>
+                            </div>
+                            <button 
+                                onClick={() => setIsDrawerOpen(true)}
+                                className="w-full text-left px-4 py-3 text-sm text-slate-600 hover:bg-slate-50 flex items-center"
+                            >
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+                                我的收藏
+                            </button>
+                            {/* In a real app, Edit Profile would go here */}
+                            <button 
+                                onClick={handleLogout}
+                                className="w-full text-left px-4 py-3 text-sm text-rose-600 hover:bg-rose-50 border-t border-slate-100 flex items-center"
+                            >
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                                退出登录
+                            </button>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <button 
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="flex items-center space-x-2 bg-white/60 hover:bg-white/90 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/60 shadow-sm text-sm font-bold text-indigo-600 transition-all hover:shadow-md hover:-translate-y-0.5"
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
+                    <span>登录 / 注册</span>
+                </button>
+            )}
+        </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 relative z-10">
@@ -379,6 +498,20 @@ const App: React.FC = () => {
         )}
       </main>
 
+      <footer className="relative z-10 text-center py-6 text-slate-400 text-xs font-light">
+          <p className="mb-1">
+              数据来源：
+              <a href="http://www.zysj.com.cn" target="_blank" rel="noopener noreferrer" className="hover:text-slate-600 transition-colors border-b border-slate-300 border-dashed pb-0.5">
+                  中医世家 (zysj.com.cn)
+              </a>
+              <span className="mx-2 opacity-50">|</span>
+              <span>历代中医典籍</span>
+          </p>
+          <p className="opacity-60 transform scale-95">
+              本系统仅供中医学习研究参考，不可替代专业医师诊断
+          </p>
+      </footer>
+
       {/* Floating Action Button (Collection) */}
       <button 
         onClick={() => setIsDrawerOpen(true)}
@@ -394,11 +527,21 @@ const App: React.FC = () => {
             <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 transition-opacity" onClick={() => setIsDrawerOpen(false)}></div>
             <div className="glass-edge fixed top-0 right-0 h-full w-full max-w-md bg-white/90 backdrop-blur-2xl shadow-2xl z-50 p-6 overflow-y-auto animate-slide-in-right border-l border-white/50">
                 <div className="flex justify-between items-center mb-8">
-                    <h2 className="text-2xl font-bold text-slate-800 serif">我的收藏</h2>
+                    <div>
+                        <h2 className="text-2xl font-bold text-slate-800 serif">我的收藏</h2>
+                        {currentUser && <p className="text-xs text-slate-500 mt-1">所属账号: {currentUser.nickname}</p>}
+                    </div>
                     <button onClick={() => setIsDrawerOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition">
                         <svg className="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                 </div>
+
+                {!currentUser && savedItems.length > 0 && (
+                    <div className="mb-6 bg-indigo-50 p-3 rounded-lg flex items-center justify-between text-xs text-indigo-700">
+                        <span>登录后可永久保存并同步您的收藏。</span>
+                        <button onClick={() => { setIsDrawerOpen(false); setIsAuthModalOpen(true); }} className="font-bold underline">去登录</button>
+                    </div>
+                )}
 
                 {savedItems.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 text-slate-400">
@@ -514,11 +657,13 @@ const App: React.FC = () => {
         onAddHerbInfo={handleAddHerbInfo}
         onUpdateHerbInfo={handleUpdateHerbInfo}
       />
-      
-      {/* Global Loading Overlay (if needed) */}
-      {/* <div className="fixed inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center z-[100]">
-           <CosmicLoader />
-      </div> */}
+
+      {/* Auth Modal */}
+      <AuthModal 
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onLoginSuccess={handleLoginSuccess}
+      />
       
     </div>
   );
