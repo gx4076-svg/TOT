@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { parseFormulaInput, findMatches, compareFormulaWithInput, formatHerbsToLines } from './utils';
 import { Herb, MatchResult, StandardFormula } from './types';
@@ -15,7 +16,19 @@ interface SavedItem {
     herbs: string[];
     type: 'user' | 'standard';
     date: string;
+    note?: string; // User remarks
+    colorTheme?: string; // Card background style class id
 }
+
+// Predefined color themes for cards
+const CARD_THEMES = [
+    { id: 'default', name: '素雅白', class: 'bg-white/60 border-white/60', display: 'bg-slate-100' },
+    { id: 'warm', name: '暖阳橙', class: 'bg-orange-50/80 border-orange-200/60', display: 'bg-orange-100' },
+    { id: 'cool', name: '清透蓝', class: 'bg-blue-50/80 border-blue-200/60', display: 'bg-blue-100' },
+    { id: 'nature', name: '草木绿', class: 'bg-emerald-50/80 border-emerald-200/60', display: 'bg-emerald-100' },
+    { id: 'mystic', name: '紫韵梦', class: 'bg-purple-50/80 border-purple-200/60', display: 'bg-purple-100' },
+    { id: 'rose', name: '蔷薇红', class: 'bg-rose-50/80 border-rose-200/60', display: 'bg-rose-100' },
+];
 
 const App: React.FC = () => {
   const [input, setInput] = useState('');
@@ -30,6 +43,12 @@ const App: React.FC = () => {
   // Favorites State
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  
+  // Edit State for Favorites
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{ name: string; note: string; colorTheme: string }>({
+      name: '', note: '', colorTheme: 'default'
+  });
 
   // --- Admin / Dynamic Data State ---
   const [isAdminOpen, setIsAdminOpen] = useState(false);
@@ -81,100 +100,110 @@ const App: React.FC = () => {
     setMatches(localResults);
 
     // 3. Hybrid Search Logic
-    const hasPerfectMatch = localResults.some(r => r.matchType === 'exact' && r.score === 1);
+    const hasPerfectMatch = localResults.some(r => r.matchType === 'exact' && r.score > 0.95);
     
-    if (!hasPerfectMatch) {
+    if (!hasPerfectMatch && herbs.length > 0) {
         setIsSearchingCloud(true);
-        try {
-            const aiFormula = await identifyFormula(herbs);
-            
-            if (aiFormula) {
-                const aiMatchResult = compareFormulaWithInput(herbs, aiFormula);
-                if (aiMatchResult) {
-                    setMatches(prev => {
-                        const exists = prev.some(p => p.formula.name === aiFormula.name);
-                        if (exists) return prev;
-                        const newMatches = [...prev, aiMatchResult];
-                        return newMatches.sort((a, b) => b.score - a.score);
-                    });
-                }
+        // If no perfect match locally, ask AI to identify "What is this formula?"
+        const identifiedFormula = await identifyFormula(herbs);
+        setIsSearchingCloud(false);
+
+        if (identifiedFormula) {
+            // Compare the AI identified formula against user input to create a MatchResult
+            const aiMatchResult = compareFormulaWithInput(herbs, identifiedFormula);
+            if (aiMatchResult) {
+                // Prepend AI result to matches
+                setMatches(prev => [aiMatchResult, ...prev]);
             }
-        } catch (e) {
-            console.error("Cloud search failed", e);
-        } finally {
-            setIsSearchingCloud(false);
         }
     }
   };
 
-  const handleAIAnalyze = async (matchResult: MatchResult) => {
+  const handleAnalyze = async (matchResult: MatchResult) => {
     setIsAnalyzing(true);
     setAnalyzingFormulaName(matchResult.formula.name);
     setAiAnalysis(null);
     
+    // Smooth scroll to analysis area
     setTimeout(() => {
-        document.getElementById('ai-analysis-section')?.scrollIntoView({ behavior: 'smooth' });
+        document.getElementById('analysis-section')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
 
-    const analysisText = await generateTCMAnalysis(parsedHerbs, matchResult);
+    const analysisText = await generateTCMAnalysis(matchResult.inputHerbs, matchResult);
     setAiAnalysis(analysisText);
     setIsAnalyzing(false);
   };
 
-  // --- Collection Logic ---
-
-  const saveUserFormula = () => {
-      if (parsedHerbs.length === 0) return;
-      const newItem: SavedItem = {
-          id: `user-${Date.now()}`,
-          name: '自拟方 / 输入方',
-          herbs: parsedHerbs.map(h => h.name),
-          type: 'user',
-          date: new Date().toLocaleDateString()
-      };
-      setSavedItems(prev => [newItem, ...prev]);
-      setIsDrawerOpen(true);
-  };
-
-  const toggleSaveStandardFormula = (formula: StandardFormula) => {
-      const isAlreadySaved = savedItems.some(i => i.name === formula.name && i.type === 'standard');
-      
-      if (isAlreadySaved) {
+  const toggleSave = (item: Partial<SavedItem>) => {
+      const existingIndex = savedItems.findIndex(i => i.name === item.name && JSON.stringify(i.herbs) === JSON.stringify(item.herbs));
+      if (existingIndex >= 0) {
           // Remove
-          setSavedItems(prev => prev.filter(i => !(i.name === formula.name && i.type === 'standard')));
+          const newItems = [...savedItems];
+          newItems.splice(existingIndex, 1);
+          setSavedItems(newItems);
       } else {
           // Add
           const newItem: SavedItem = {
-              id: `std-${formula.name}-${Date.now()}`,
-              name: formula.name,
-              herbs: formula.composition,
-              type: 'standard',
-              date: new Date().toLocaleDateString()
+              id: Date.now().toString(),
+              name: item.name || '未命名方剂',
+              herbs: item.herbs || [],
+              type: item.type || 'user',
+              date: new Date().toLocaleDateString(),
+              note: '',
+              colorTheme: 'default'
           };
-          setSavedItems(prev => [newItem, ...prev]);
-          setIsDrawerOpen(true); // Feedback
+          setSavedItems([newItem, ...savedItems]);
+          // Auto-open drawer to show it was added
+          setIsDrawerOpen(true);
+      }
+  };
+  
+  const handleDeleteItem = (id: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      setSavedItems(prev => prev.filter(item => item.id !== id));
+      if (editingItemId === id) {
+          setEditingItemId(null);
       }
   };
 
-  const deleteSavedItem = (id: string) => {
-      setSavedItems(prev => prev.filter(i => i.id !== id));
+  // --- Editing Favorites Logic ---
+  const handleEditItem = (item: SavedItem, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (editingItemId === item.id) {
+          // Toggle off
+          setEditingItemId(null);
+      } else {
+          setEditingItemId(item.id);
+          setEditForm({
+              name: item.name,
+              note: item.note || '',
+              colorTheme: item.colorTheme || 'default'
+          });
+      }
+  };
+
+  const handleSaveEdit = (id: string) => {
+      setSavedItems(prev => prev.map(item => {
+          if (item.id === id) {
+              return {
+                  ...item,
+                  name: editForm.name,
+                  note: editForm.note,
+                  colorTheme: editForm.colorTheme
+              };
+          }
+          return item;
+      }));
+      setEditingItemId(null);
   };
 
   // --- Admin Logic ---
   const handleAddFormula = (newFormula: StandardFormula) => {
-      setDynamicFormulas(prev => [newFormula, ...prev]);
+      setDynamicFormulas(prev => [...prev, newFormula]);
   };
-
-  const handleUpdateFormula = (updated: StandardFormula) => {
-      setDynamicFormulas(prev => {
-          const idx = prev.findIndex(f => f.id === updated.id);
-          if (idx >= 0) {
-              const newArr = [...prev];
-              newArr[idx] = updated;
-              return newArr;
-          }
-          return [updated, ...prev];
-      });
+  
+  const handleUpdateFormula = (updatedFormula: StandardFormula) => {
+      setDynamicFormulas(prev => prev.map(f => f.id === updatedFormula.id ? updatedFormula : f));
   };
 
   const handleAddHerbInfo = (name: string, data: { effect: string; paozhi: string }) => {
@@ -185,265 +214,312 @@ const App: React.FC = () => {
       setDynamicHerbInfo(prev => ({ ...prev, [name]: data }));
   };
 
-  // --- Filter Logic ---
+  const isSaved = (name: string, herbs: Herb[]) => {
+      const herbNames = herbs.map(h => h.name);
+      return savedItems.some(item => item.name === name && JSON.stringify(item.herbs) === JSON.stringify(herbNames));
+  };
+
+  // --- Visuals ---
+  const showMatches = matches.length > 0;
   const highConfidenceMatches = matches.filter(m => m.score >= 0.5);
   const lowConfidenceMatches = matches.filter(m => m.score < 0.5);
+  const displayMatches = showLowConfidence ? matches : highConfidenceMatches;
 
   return (
-    <div className="min-h-screen pb-20 relative text-slate-800">
+    <div className="min-h-screen text-slate-700 pb-20 relative overflow-x-hidden selection:bg-teal-100 selection:text-teal-900">
       
-      {/* Liquid Glass Header */}
-      <header className="sticky top-4 z-30 px-4 animate-fade-in-up">
-        <div className="max-w-3xl mx-auto bg-white/30 backdrop-blur-xl border border-white/40 shadow-[0_8px_32px_0_rgba(31,38,135,0.05)] rounded-2xl py-4 px-6 flex justify-between items-center transition-all duration-300">
-          <div className="flex items-center">
-            {/* HIDDEN ADMIN TRIGGER: Double Click the Emoji */}
-            <span 
-                className="text-2xl mr-2 cursor-default select-none transition-transform active:scale-95" 
-                onDoubleClick={() => setIsAdminOpen(true)}
-                title=""
-            >
-                🌿
-            </span>
-            <h1 className="text-2xl font-bold serif tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-teal-700 to-blue-600">
-              中医方剂溯源
-            </h1>
+      {/* Decorative Background Blobs */}
+      <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-200/30 rounded-full blur-[100px] pointer-events-none mix-blend-multiply animate-float"></div>
+      <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-teal-200/30 rounded-full blur-[100px] pointer-events-none mix-blend-multiply animate-float" style={{ animationDelay: '2s' }}></div>
+      <div className="fixed top-[20%] right-[10%] w-[20%] h-[30%] bg-blue-200/30 rounded-full blur-[80px] pointer-events-none mix-blend-multiply animate-float" style={{ animationDelay: '4s' }}></div>
+
+      {/* Progress Bar (Top) */}
+      {progress > 0 && (
+          <div className="fixed top-0 left-0 w-full h-1 z-50">
+              <div 
+                  className="h-full bg-gradient-to-r from-teal-400 via-blue-500 to-purple-500 transition-all duration-300 ease-out"
+                  style={{ width: `${progress}%` }}
+              ></div>
           </div>
-          <button 
-            onClick={() => setIsDrawerOpen(true)}
-            className="group flex items-center space-x-2 bg-white/40 hover:bg-white/60 border border-white/40 px-4 py-2 rounded-full transition-all duration-300 shadow-sm hover:shadow-md"
-          >
-            <svg className="w-5 h-5 text-yellow-500 transition-transform group-hover:scale-110" fill="currentColor" viewBox="0 0 20 20"><path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z"></path></svg>
-            <span className="text-sm font-medium text-slate-600">收藏夹 ({savedItems.length})</span>
-          </button>
+      )}
+
+      {/* Header */}
+      <header className="relative pt-10 pb-6 px-6 text-center z-10">
+        <div className="flex justify-center items-center mb-4 cursor-pointer group" onDoubleClick={() => setIsAdminOpen(true)} title="双击打开管理后台">
+             <div className="bg-white/80 p-3 rounded-2xl shadow-lg shadow-teal-500/10 backdrop-blur-sm mr-4 border border-white/50 group-hover:scale-110 transition-transform duration-300">
+                <span className="text-4xl filter drop-shadow-sm">🌿</span>
+             </div>
+             <h1 className="text-4xl md:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-700 via-slate-800 to-slate-600 serif tracking-tight">
+                方剂<span className="text-teal-600">溯源</span>系统
+             </h1>
         </div>
+        <p className="text-slate-500 text-sm md:text-base max-w-lg mx-auto font-light tracking-wide">
+          智能解析药物组成 · AI 辅助深度分析 · 经典名方匹配
+        </p>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 mt-8">
-        {/* Input Card - Liquid Glass Style */}
-        <div className="bg-white/30 backdrop-blur-xl rounded-3xl shadow-[0_8px_32px_0_rgba(31,38,135,0.07)] border border-white/50 p-6 mb-10 transition-all hover:shadow-[0_12px_48px_0_rgba(31,38,135,0.1)] relative overflow-hidden group">
-            
-            {/* Decorative Gradients */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-teal-100/30 to-blue-100/30 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
-            
-            <div className="relative z-10">
-                <label className="block text-slate-600 font-bold mb-3 tracking-wide text-sm uppercase">输入您的方剂组成</label>
-                <div className="relative">
-                    <textarea
-                        className="w-full h-32 p-5 rounded-2xl border border-white/60 bg-white/40 backdrop-blur-sm focus:ring-4 focus:ring-teal-100/50 focus:border-teal-300/50 outline-none transition-all resize-none shadow-inner text-lg text-slate-700 placeholder-slate-400 font-medium"
-                        placeholder=""
-                        value={input}
-                        onChange={handleInputChange}
-                    />
-                    {input && (
-                        <button 
-                            onClick={() => setInput('')}
-                            className="absolute top-3 right-3 text-slate-400 hover:text-slate-600 bg-white/50 rounded-full p-1 hover:bg-white/80 transition"
-                        >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                        </button>
-                    )}
-                </div>
+      <main className="max-w-3xl mx-auto px-4 relative z-10">
+        
+        {/* Input Section */}
+        <div className="glass-edge relative bg-white/40 backdrop-blur-xl rounded-[2rem] shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] p-2 border border-white/60 mb-10 transition-all hover:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.1)] hover:bg-white/50">
+            <div className="relative">
+                <textarea
+                    value={input}
+                    onChange={handleInputChange}
+                    placeholder=""
+                    className="w-full h-40 p-6 rounded-[1.5rem] bg-transparent border-none outline-none text-lg text-slate-700 placeholder:text-slate-400/70 resize-none font-medium leading-relaxed"
+                />
+                
+                {/* Decorative corner lines */}
+                <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-slate-300/50 rounded-tl-lg pointer-events-none"></div>
+                <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-slate-300/50 rounded-tr-lg pointer-events-none"></div>
+                <div className="absolute bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-slate-300/50 rounded-bl-lg pointer-events-none"></div>
+                <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-slate-300/50 rounded-br-lg pointer-events-none"></div>
+            </div>
 
-                <div className="mt-5 flex justify-between items-center">
-                    <div className="text-xs text-slate-400 font-medium px-2">
-                        已识别: <span className="text-teal-600 font-bold">{parsedHerbs.length}</span> 味药
-                    </div>
-                    <div className="flex space-x-3">
-                         {parsedHerbs.length > 0 && (
-                             <button
-                                onClick={saveUserFormula}
-                                className="px-4 py-2.5 rounded-xl text-slate-500 font-bold text-sm hover:bg-white/50 transition border border-transparent hover:border-white/40"
-                             >
-                                 保存自拟方
-                             </button>
-                         )}
-                        <button
-                            onClick={handleSearch}
-                            disabled={!input.trim() || isSearchingCloud}
-                            className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white px-8 py-2.5 rounded-xl font-bold shadow-lg shadow-teal-500/30 hover:shadow-teal-500/40 hover:scale-105 active:scale-95 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center"
-                        >
+            <div className="flex justify-between items-center px-4 pb-3 pt-1 border-t border-slate-200/30">
+                <div className="text-xs text-slate-400 font-medium pl-2">
+                    {input.length > 0 ? `${input.length} 字` : '请输入方剂组成...'}
+                </div>
+                <div className="flex space-x-3">
+                    <button 
+                        onClick={() => {setInput(''); setMatches([]); setAiAnalysis(null);}}
+                        className="px-4 py-2 rounded-xl text-slate-500 hover:bg-white/50 transition text-sm font-medium"
+                    >
+                        清空
+                    </button>
+                    <button 
+                        onClick={handleSearch}
+                        disabled={!input.trim() || isSearchingCloud}
+                        className="group relative overflow-hidden bg-gradient-to-r from-indigo-600 to-indigo-500 text-white px-8 py-2.5 rounded-xl font-bold shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/40 hover:scale-105 active:scale-95 transition-all duration-300 disabled:opacity-70 disabled:cursor-not-allowed"
+                    >
+                        <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-shine"></div>
+                        <span className="relative flex items-center">
                             {isSearchingCloud ? (
-                                <span className="flex items-center">
+                                <>
                                     <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                                     全网检索中...
-                                </span>
-                            ) : (
-                                "智能溯源"
-                            )}
-                        </button>
-                    </div>
+                                </>
+                            ) : '智能溯源'}
+                        </span>
+                    </button>
                 </div>
             </div>
-            
-            {/* Progress Bar for Cloud Search */}
-            {isSearchingCloud && (
-                <div className="absolute bottom-0 left-0 w-full h-1 bg-teal-100/30">
-                    <div 
-                        className="h-full bg-gradient-to-r from-teal-400 to-emerald-400 transition-all duration-300 ease-out shadow-[0_0_10px_rgba(45,212,191,0.5)]"
-                        style={{ width: `${progress}%` }}
-                    ></div>
-                </div>
-            )}
         </div>
 
-        {/* AI Analysis Section */}
-        {aiAnalysis && (
-            <div id="ai-analysis-section" className="mb-10 animate-fade-in-up">
-                <div className="bg-white/40 backdrop-blur-xl rounded-3xl border border-white/60 p-1 shadow-lg">
-                    <div className="bg-gradient-to-br from-indigo-50/50 to-purple-50/50 rounded-[22px] p-6 md:p-8">
-                         <div className="flex items-center mb-6 pb-4 border-b border-indigo-100/50">
-                            <div className="bg-indigo-100 p-2 rounded-lg mr-4 text-2xl">🤖</div>
-                            <div>
-                                <h3 className="text-xl font-bold text-indigo-900">AI 深度辨证分析</h3>
-                                <p className="text-xs text-indigo-400 font-medium mt-1">针对 {analyzingFormulaName} 的个性化解读</p>
-                            </div>
-                         </div>
-                         <div className="prose prose-sm md:prose-base prose-indigo max-w-none text-slate-700 leading-relaxed bg-white/40 p-5 rounded-2xl border border-white/50 shadow-inner">
-                            <ReactMarkdown>{aiAnalysis}</ReactMarkdown>
-                         </div>
-                    </div>
-                </div>
+        {/* Results Section */}
+        {matches.length > 0 ? (
+          <div className="animate-fade-in-up">
+            <div className="flex items-center justify-between mb-6 px-2">
+                <h2 className="text-lg font-bold text-slate-600 flex items-center">
+                    <span className="w-2 h-2 bg-teal-500 rounded-full mr-2 shadow-[0_0_10px_rgba(20,184,166,0.6)]"></span>
+                    识别结果 
+                    <span className="ml-2 text-xs font-normal text-slate-400 bg-white/50 px-2 py-0.5 rounded-full border border-white/60">共 {matches.length} 个匹配</span>
+                </h2>
+                {lowConfidenceMatches.length > 0 && (
+                     <button 
+                        onClick={() => setShowLowConfidence(!showLowConfidence)}
+                        className="text-xs text-slate-500 underline hover:text-indigo-600 transition"
+                     >
+                         {showLowConfidence ? '隐藏低匹配度结果' : `显示 ${lowConfidenceMatches.length} 个低匹配度结果`}
+                     </button>
+                )}
             </div>
-        )}
-
-        {/* Loading State */}
-        {isSearchingCloud && matches.length === 0 && (
-             <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
-                 <CosmicLoader />
-                 <p className="mt-8 text-slate-500 font-medium tracking-wide animate-pulse">正在解析古籍与全网数据...</p>
+            
+            <div className="space-y-6">
+              {displayMatches.map((match, index) => (
+                <FormulaCard 
+                    key={`${match.formula.id}-${index}`} 
+                    result={match} 
+                    rank={index + 1}
+                    onAnalyze={handleAnalyze}
+                    isAnalyzing={isAnalyzing && analyzingFormulaName === match.formula.name}
+                    onToggleSave={() => toggleSave({ 
+                        name: match.formula.name, 
+                        herbs: parsedHerbs.map(h => h.name), 
+                        type: 'standard' 
+                    })}
+                    isSaved={isSaved(match.formula.name, parsedHerbs)}
+                />
+              ))}
+            </div>
+            
+            {showLowConfidence && displayMatches.length === 0 && (
+                <div className="text-center py-10 text-slate-400 bg-white/20 rounded-2xl border border-white/30 border-dashed">
+                    没有找到更多结果。
+                </div>
+            )}
+          </div>
+        ) : input.trim() && !isSearchingCloud && (
+             <div className="text-center py-12 opacity-60 animate-fade-in">
+                 <div className="text-6xl mb-4">🔍</div>
+                 <p className="text-slate-500">未找到完全匹配的方剂，<br/>尝试输入如“麻黄 桂枝 杏仁 甘草”</p>
              </div>
         )}
 
-        {/* Results List */}
-        <div className="space-y-6">
-            {/* High Confidence Matches */}
-            {highConfidenceMatches.map((result, index) => (
-                <FormulaCard 
-                    key={`${result.formula.id}-${index}`} 
-                    result={result} 
-                    rank={index + 1}
-                    onAnalyze={handleAIAnalyze}
-                    isAnalyzing={isAnalyzing && analyzingFormulaName === result.formula.name}
-                    onToggleSave={() => toggleSaveStandardFormula(result.formula)}
-                    isSaved={savedItems.some(i => i.name === result.formula.name && i.type === 'standard')}
-                />
-            ))}
+        {/* AI Analysis Section */}
+        {aiAnalysis && (
+          <div id="analysis-section" className="glass-edge mt-12 mb-20 bg-white/60 backdrop-blur-xl rounded-[2rem] p-8 border border-white/60 shadow-[0_20px_60px_-15px_rgba(50,50,93,0.1)] relative overflow-hidden animate-fade-in-up">
+             {/* Decorative header bg */}
+             <div className="absolute top-0 left-0 w-full h-20 bg-gradient-to-b from-teal-50/80 to-transparent pointer-events-none"></div>
+             
+             <h2 className="text-2xl font-bold text-teal-800 mb-6 flex items-center relative z-10 serif">
+               <span className="text-3xl mr-3">🤖</span> AI 深度临床分析
+             </h2>
+             
+             <div className="prose prose-slate prose-sm md:prose-base max-w-none relative z-10 prose-headings:font-serif prose-headings:text-teal-700 prose-strong:text-teal-600">
+               <ReactMarkdown>{aiAnalysis}</ReactMarkdown>
+             </div>
 
-            {/* View More / Low Confidence Section */}
-            {lowConfidenceMatches.length > 0 && (
-                <div className="mt-8">
-                    {!showLowConfidence ? (
-                        <div className="flex flex-col items-center">
-                            <div className="w-full h-px bg-gradient-to-r from-transparent via-slate-300/50 to-transparent mb-4"></div>
-                            <button 
-                                onClick={() => setShowLowConfidence(true)}
-                                className="group flex items-center space-x-2 bg-white/40 hover:bg-white/60 text-slate-500 hover:text-slate-700 px-6 py-2 rounded-full border border-white/50 shadow-sm backdrop-blur-sm transition-all text-sm font-medium"
-                            >
-                                <span>查看另外 {lowConfidenceMatches.length} 个相似度较低的结果</span>
-                                <svg className="w-4 h-4 transform group-hover:translate-y-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="animate-fade-in space-y-6">
-                            <div className="flex items-center justify-center py-4">
-                                <span className="text-xs font-bold text-slate-400 bg-slate-100/50 px-3 py-1 rounded-full uppercase tracking-wider">以下结果匹配度较低</span>
-                            </div>
-                            {lowConfidenceMatches.map((result, index) => (
-                                <FormulaCard 
-                                    key={`${result.formula.id}-low-${index}`} 
-                                    result={result} 
-                                    rank={highConfidenceMatches.length + index + 1}
-                                    onAnalyze={handleAIAnalyze}
-                                    isAnalyzing={isAnalyzing && analyzingFormulaName === result.formula.name}
-                                    onToggleSave={() => toggleSaveStandardFormula(result.formula)}
-                                    isSaved={savedItems.some(i => i.name === result.formula.name && i.type === 'standard')}
-                                />
-                            ))}
-                            <div className="flex justify-center pt-4">
-                                <button 
-                                    onClick={() => setShowLowConfidence(false)}
-                                    className="text-xs text-slate-400 hover:text-slate-600 underline"
-                                >
-                                    收起低匹配结果
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* No Results */}
-            {!isSearchingCloud && parsedHerbs.length > 0 && matches.length === 0 && (
-                <div className="text-center py-16 bg-white/30 rounded-3xl border border-white/50 backdrop-blur-sm">
-                    <div className="text-5xl mb-4 opacity-50">🍃</div>
-                    <h3 className="text-xl font-bold text-slate-600 mb-2">未找到相似经典方剂</h3>
-                    <p className="text-slate-500 max-w-md mx-auto">尝试减少一些非核心药物，或者该方可能为近代经验方。</p>
-                </div>
-            )}
-        </div>
-
+             {/* Footer Decoration */}
+             <div className="absolute bottom-4 right-6 text-[10px] text-slate-300 font-mono tracking-widest uppercase">
+                 AI Generated Content • {new Date().toLocaleDateString()}
+             </div>
+          </div>
+        )}
       </main>
 
-      {/* Collection Drawer */}
-      <div 
-        className={`fixed inset-y-0 right-0 w-80 md:w-96 bg-white/90 backdrop-blur-2xl shadow-2xl transform transition-transform duration-500 z-40 border-l border-white/50 ${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}
+      {/* Floating Action Button (Collection) */}
+      <button 
+        onClick={() => setIsDrawerOpen(true)}
+        className="fixed bottom-8 right-8 bg-slate-800 text-white p-4 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.3)] hover:scale-110 active:scale-95 transition-all duration-300 z-40 group"
       >
-          <div className="flex flex-col h-full">
-              <div className="p-6 border-b border-slate-200/60 bg-white/50">
-                  <div className="flex justify-between items-center">
-                      <h2 className="text-xl font-bold text-slate-800 serif">我的收藏</h2>
-                      <button onClick={() => setIsDrawerOpen(false)} className="p-2 hover:bg-slate-200/50 rounded-full transition">
-                          <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                      </button>
-                  </div>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
-                  {savedItems.length === 0 ? (
-                      <div className="text-center py-10 text-slate-400">
-                          <p>暂无收藏方剂</p>
-                      </div>
-                  ) : (
-                      savedItems.map(item => (
-                          <div key={item.id} className="bg-white/60 p-4 rounded-xl border border-white/60 shadow-sm hover:shadow-md transition group relative overflow-hidden">
-                              <div className="flex justify-between items-start mb-2 relative z-10">
-                                  <h3 className="font-bold text-slate-800">{item.name}</h3>
-                                  <button onClick={() => deleteSavedItem(item.id)} className="text-slate-300 hover:text-red-400 transition">
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                  </button>
-                              </div>
-                              <div className="text-xs text-slate-500 space-y-1 relative z-10">
-                                  {formatHerbsToLines(item.herbs).map((line, i) => (
-                                      <div key={i} className="flex gap-2">
-                                          {line.map(herb => (
-                                              <span key={herb} className="bg-slate-100/80 px-1.5 py-0.5 rounded">{herb}</span>
-                                          ))}
-                                      </div>
-                                  ))}
-                              </div>
-                              <div className="mt-3 text-[10px] text-slate-400 flex justify-between items-center relative z-10">
-                                  <span>{item.date}</span>
-                                  <span className={`px-2 py-0.5 rounded-full ${item.type === 'user' ? 'bg-indigo-50 text-indigo-500' : 'bg-teal-50 text-teal-500'}`}>
-                                      {item.type === 'user' ? '自拟' : '经典'}
-                                  </span>
-                              </div>
-                          </div>
-                      ))
-                  )}
-              </div>
-          </div>
-      </div>
+        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-slate-100 shadow-sm scale-0 group-hover:scale-100 transition-transform">{savedItems.length}</span>
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+      </button>
+
+      {/* Collection Drawer */}
+      {isDrawerOpen && (
+        <>
+            <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 transition-opacity" onClick={() => setIsDrawerOpen(false)}></div>
+            <div className="glass-edge fixed top-0 right-0 h-full w-full max-w-md bg-white/90 backdrop-blur-2xl shadow-2xl z-50 p-6 overflow-y-auto animate-slide-in-right border-l border-white/50">
+                <div className="flex justify-between items-center mb-8">
+                    <h2 className="text-2xl font-bold text-slate-800 serif">我的收藏</h2>
+                    <button onClick={() => setIsDrawerOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition">
+                        <svg className="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+
+                {savedItems.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                        <svg className="w-16 h-16 mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        <p>暂无收藏方剂</p>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        {savedItems.map(item => {
+                            const isEditing = editingItemId === item.id;
+                            const theme = CARD_THEMES.find(t => t.id === item.colorTheme) || CARD_THEMES[0];
+                            
+                            return (
+                                <div key={item.id} className={`glass-edge p-5 rounded-2xl border transition-all duration-300 group ${theme.class} shadow-sm hover:shadow-md`}>
+                                    <div className="flex justify-between items-start mb-2">
+                                        {isEditing ? (
+                                            <input 
+                                                value={editForm.name}
+                                                onChange={e => setEditForm({...editForm, name: e.target.value})}
+                                                className="font-bold text-lg bg-white/50 border border-slate-300 rounded px-2 py-1 w-full mr-2 focus:ring-2 ring-indigo-200 outline-none"
+                                                autoFocus
+                                            />
+                                        ) : (
+                                            <h3 className="font-bold text-lg text-slate-800">{item.name}</h3>
+                                        )}
+                                        
+                                        <div className="flex space-x-1 shrink-0">
+                                            {isEditing ? (
+                                                <button onClick={() => handleSaveEdit(item.id)} className="p-1.5 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 shadow-sm" title="保存">
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                                                </button>
+                                            ) : (
+                                                <button onClick={(e) => handleEditItem(item, e)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-white/50 rounded-lg transition" title="编辑">
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                </button>
+                                            )}
+                                            <button onClick={(e) => handleDeleteItem(item.id, e)} className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-white/50 rounded-lg transition" title="删除">
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Composition (4 per line) */}
+                                    <div className="text-sm text-slate-600 mb-3 leading-relaxed font-mono opacity-80 bg-white/30 p-2 rounded-lg border border-white/20">
+                                        {formatHerbsToLines(item.herbs).map((line, i) => (
+                                            <div key={i} className="flex space-x-2 mb-1 last:mb-0">
+                                                {line.map((h, j) => (
+                                                    <span key={j} className="bg-white/50 px-1.5 rounded text-slate-700">{h}</span>
+                                                ))}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    
+                                    {/* Edit Mode: Color Theme & Note */}
+                                    {isEditing ? (
+                                        <div className="mt-3 pt-3 border-t border-slate-200/50 space-y-3">
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-400 block mb-1.5">卡片主题色</label>
+                                                <div className="flex space-x-2">
+                                                    {CARD_THEMES.map(t => (
+                                                        <button
+                                                            key={t.id}
+                                                            onClick={() => setEditForm({...editForm, colorTheme: t.id})}
+                                                            className={`w-6 h-6 rounded-full border border-slate-200 shadow-sm transition-transform ${t.display} ${editForm.colorTheme === t.id ? 'scale-125 ring-2 ring-slate-400 ring-offset-2' : 'hover:scale-110'}`}
+                                                            title={t.name}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-400 block mb-1.5">备注</label>
+                                                <textarea 
+                                                    value={editForm.note}
+                                                    onChange={e => setEditForm({...editForm, note: e.target.value})}
+                                                    placeholder="添加备注..."
+                                                    className="w-full text-sm bg-white/50 border border-slate-300 rounded-lg p-2 focus:ring-2 ring-indigo-200 outline-none h-20 resize-none"
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {item.note && (
+                                                <div className="mt-3 text-xs text-slate-500 italic bg-black/5 p-2 rounded border border-black/5">
+                                                    {item.note}
+                                                </div>
+                                            )}
+                                            <div className="mt-3 flex justify-between items-center">
+                                                <span className="text-[10px] text-slate-400">{item.date}</span>
+                                                <span className={`text-[10px] px-2 py-0.5 rounded-full ${item.type === 'standard' ? 'bg-teal-100 text-teal-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                                                    {item.type === 'standard' ? '经典' : '自拟'}
+                                                </span>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        </>
+      )}
 
       {/* Admin Panel Overlay */}
       <AdminPanel 
-          isOpen={isAdminOpen} 
-          onClose={() => setIsAdminOpen(false)}
-          formulas={dynamicFormulas}
-          herbInfo={dynamicHerbInfo}
-          onAddFormula={handleAddFormula}
-          onUpdateFormula={handleUpdateFormula}
-          onAddHerbInfo={handleAddHerbInfo}
-          onUpdateHerbInfo={handleUpdateHerbInfo}
+        isOpen={isAdminOpen} 
+        onClose={() => setIsAdminOpen(false)} 
+        formulas={dynamicFormulas}
+        herbInfo={dynamicHerbInfo}
+        onAddFormula={handleAddFormula}
+        onUpdateFormula={handleUpdateFormula}
+        onAddHerbInfo={handleAddHerbInfo}
+        onUpdateHerbInfo={handleUpdateHerbInfo}
       />
+      
+      {/* Global Loading Overlay (if needed) */}
+      {/* <div className="fixed inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center z-[100]">
+           <CosmicLoader />
+      </div> */}
+      
     </div>
   );
 };

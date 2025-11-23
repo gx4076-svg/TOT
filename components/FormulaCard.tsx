@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { MatchResult, Herb } from '../types';
+import { MatchResult } from '../types';
 import HerbTooltip from './HerbTooltip';
 
 interface FormulaCardProps {
@@ -80,7 +80,7 @@ const VisualComparison: React.FC<{ result: MatchResult }> = ({ result }) => {
                                         className={`cursor-help px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-300 inline-flex items-center border ${
                                             isMatch 
                                             ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20 hover:scale-105' 
-                                            : 'bg-white/40 text-indigo-600 border-indigo-200/60 border-dashed hover:bg-white/80 hover:border-indigo-300 hover:shadow-sm'
+                                            : 'bg-white/40 text-indigo-600 border-indigo-200/60 border-indigo-200/60 border-dashed hover:bg-white/80 hover:border-indigo-300 hover:shadow-sm'
                                         }`}
                                     >
                                         {herb.name}
@@ -120,14 +120,16 @@ const FormulaCard: React.FC<FormulaCardProps> = ({
       scoreColor = 'text-slate-400';
   }
 
+  const isCloudSource = formula.isAiGenerated;
+
   return (
     <div className="relative mb-6 group transition-all duration-500 hover:scale-[1.01] hover:z-20 animate-fade-in-up" style={{ animationDelay: `${rank * 0.1}s` }}>
         
         {/* Background Layer (Clipped) */}
-        <div className="absolute inset-0 bg-white/25 backdrop-blur-2xl rounded-3xl shadow-[0_8px_32px_0_rgba(31,38,135,0.05)] border border-white/40 overflow-hidden group-hover:shadow-[0_12px_40px_0_rgba(31,38,135,0.08)] group-hover:bg-white/30 transition-all duration-300 pointer-events-none">
-             {/* AI Source Badge */}
-            {formula.isAiGenerated && (
-                <div className="absolute top-4 left-0 bg-gradient-to-r from-blue-500/90 to-indigo-500/90 text-white text-[10px] px-3 py-1 rounded-r-full shadow-lg shadow-blue-500/30 z-20 font-bold tracking-wider border-t border-white/20 backdrop-blur-md">
+        <div className="glass-edge absolute inset-0 bg-white/25 backdrop-blur-2xl rounded-3xl border border-white/40 overflow-hidden group-hover:shadow-[0_12px_40px_0_rgba(31,38,135,0.08)] group-hover:bg-white/30 transition-all duration-300 pointer-events-none">
+             {/* AI Source Badge - Positioned to flush left-top to avoid text overlap */}
+            {isCloudSource && (
+                <div className="absolute top-0 left-0 bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-[10px] px-3 py-1.5 rounded-br-xl shadow-lg z-20 font-bold tracking-wider">
                     ☁️ 全网检索
                 </div>
             )}
@@ -135,7 +137,8 @@ const FormulaCard: React.FC<FormulaCardProps> = ({
              <div className="absolute top-0 -left-[100%] w-full h-full bg-gradient-to-r from-transparent via-white/40 to-transparent group-hover:animate-shine transition-none"></div>
         </div>
 
-      <div className="relative z-10 p-7">
+      {/* Increased top padding if Cloud Source to prevent overlap with badge */}
+      <div className={`relative z-10 p-7 ${isCloudSource ? 'pt-12' : ''}`}>
         {/* Header Section */}
         <div className="flex justify-between items-start mb-4">
           {/* Left: Title & Source */}
