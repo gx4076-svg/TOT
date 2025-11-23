@@ -1,0 +1,5 @@
+{
+  "name": "TCM-Origin-Trace",
+  "description": "A Traditional Chinese Medicine formula tracing and intelligent analysis system capable of identifying formula origins, analyzing dosage ratios, and providing AI-driven modification insights.",
+  "requestFramePermissions": []
+}
