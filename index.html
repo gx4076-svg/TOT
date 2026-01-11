@@ -1,122 +1,85 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
+  
   <head>
+    
     <meta charset="UTF-8" />
+    
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
     <title>中医方剂溯源与智能分析系统</title>
+  
     <script src="https://cdn.tailwindcss.com"></script>
+  
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  
     <style>
-      body {
-        font-family: 'Noto Sans SC', sans-serif;
-        /* Aurora Mesh Gradient Background */
-        background-color: #f3f4f6;
-        background-image: 
-          radial-gradient(at 0% 0%, hsla(192, 90%, 90%, 1) 0px, transparent 50%),
-          radial-gradient(at 100% 0%, hsla(268, 80%, 92%, 1) 0px, transparent 50%),
-          radial-gradient(at 100% 100%, hsla(330, 80%, 92%, 1) 0px, transparent 50%),
-          radial-gradient(at 0% 100%, hsla(210, 80%, 92%, 1) 0px, transparent 50%);
-        background-attachment: fixed;
-        background-size: cover;
-      }
-
-      h1, h2, h3, .serif {
-        font-family: 'Noto Serif SC', serif;
-      }
-
-      /* Custom Scrollbar */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: rgba(148, 163, 184, 0.5); 
-        border-radius: 4px;
-        border: 2px solid transparent;
-        background-clip: content-box;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: rgba(100, 116, 139, 0.8); 
-        border: 2px solid transparent;
-        background-clip: content-box;
-      }
-
-      /* Glass Utility Animations */
-      @keyframes float {
-        0% { transform: translateY(0px); }
-        50% { transform: translateY(-5px); }
-        100% { transform: translateY(0px); }
-      }
-      .animate-float {
-        animation: float 6s ease-in-out infinite;
-      }
-
-      /* Entrance Animations */
-      @keyframes fadeInUp {
-        from {
-          opacity: 0;
-          transform: translateY(20px) scale(0.98);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0) scale(1);
-        }
-      }
-      .animate-fade-in-up {
-        animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-      }
-
-      /* Tooltip Pop Animation */
-      @keyframes pop {
-        0% { opacity: 0; transform: translateX(-50%) scale(0.8) translateY(10px); }
-        100% { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
-      }
-      .animate-pop {
-        animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-      }
       
-      /* Simple Shine */
-      @keyframes shine {
-        100% {
-          left: 125%;
-        }
-      }
-      .group:hover .animate-shine {
-        animation: shine 1s;
-      }
-
-      /* --- NEW: Glass Edge Reflection Effects --- */
-      .glass-edge {
-        /* Simulates a light source hitting the top/left edge */
-        box-shadow: 
-          inset 0 1px 0 0 rgba(255, 255, 255, 0.7),
-          inset 1px 0 0 0 rgba(255, 255, 255, 0.4),
-          0 4px 6px -1px rgba(0, 0, 0, 0.05);
-      }
+      body { font-family: 'Noto Sans SC', sans-serif; }
       
-      .glass-edge-strong {
-        box-shadow: 
-          inset 0 1.5px 0 0 rgba(255, 255, 255, 0.9),
-          inset 1px 0 0 0 rgba(255, 255, 255, 0.5),
-          0 8px 32px 0 rgba(31, 38, 135, 0.07);
-      }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0"
-  }
-}
-</script>
-</head>
+    
+    <script type="importmap">
+      
+    {
+      
+      "imports": {
+      
+        "react": "https://aistudiocdn.com/react@^19.2.0",
+      
+        "react/": "https://aistudiocdn.com/react@^19.2.0/",
+      
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+      
+        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+      
+        "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0"
+      
+      }
+      
+    }
+      
+    </script>
+    
+    <!-- Vite 入口脚本：构建时将被替换为 /assets/*.js -->
+    
+    <script type="module" src="/index.tsx"></script>
+    
+  </head>
+  
   <body>
-    <div id="root"></div>
+    
+    <div id="root"></div>div>
+    
   </body>
-</html>
+  
+</html>html>
+
+
+
+
+
+  </body>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    </style></title>
+
+
+
+  </head>
