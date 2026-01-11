@@ -1,4 +1,51 @@
 
+
+// --- Test connection button ---
+
+const [testResult, setTestResult] = useState<string>('');
+
+async function testConnection(){
+    
+  try{
+      
+    const resp = await fetch('/api/gemini',{
+        
+      method:'POST',headers:{'Content-Type':'application/json'},
+        
+      body: JSON.stringify({ contents:[{ role:'user', parts:[{ text:'请用一句简体中文自我介绍。'}]}] })
+          
+    });
+      
+    const data = await resp.json();
+      
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify(data);
+      
+    setTestResult(text);
+      
+    alert('连接成功：'+text.slice(0,60));
+      
+  }catch(e){
+      
+    alert('连接失败：'+String(e));
+      
+  }
+    
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import React, { useState, useEffect } from 'react';
 import { parseFormulaInput, findMatches, compareFormulaWithInput, formatHerbsToLines } from './utils';
 import { Herb, MatchResult, StandardFormula, HerbDetail, SavedItem, User } from './types';
